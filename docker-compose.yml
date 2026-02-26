@@ -1,0 +1,41 @@
+# Run API, worker, and scheduler with .env loaded. Build: docker compose build
+# Up: docker compose up (or docker compose up -d). Requires external Postgres + Redis (set in .env).
+# On Apple Silicon: platform linux/arm64 (set below). On Intel/AMD: use linux/amd64 or remove platform.
+#
+# Worker AWS errors: "StatusCode: 0, request send failed" / "GetCallerIdentity exceeded maximum number of attempts"
+# means the container cannot reach AWS (STS/APIs). Ensure:
+#   - Worker has outbound HTTPS (e.g. docker compose run --rm worker curl -sI https://sts.amazonaws.com)
+#   - If behind a proxy: set HTTP_PROXY / HTTPS_PROXY (and NO_PROXY if needed) under worker.environment
+services:
+  api:
+    build: .
+    platform: linux/arm64
+    env_file: .env
+    ports:
+      - "8000:8000"
+    command: ["uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "8000"]
+    restart: unless-stopped
+
+  worker:
+    build: .
+    platform: linux/arm64
+    env_file: .env
+    environment:
+      STEAMPIPE_CONFIG_DIR: /app/steampipe
+      STEAMPIPE_PATH: /usr/local/bin/steampipe
+      HOME: /app
+      # AWS: master account creds from .env (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, optional AWS_SESSION_TOKEN) for Steampipe / assume-role.
+      # If behind a corporate proxy, add:
+      # HTTP_PROXY: http://proxy:port
+      # HTTPS_PROXY: http://proxy:port
+      # NO_PROXY: localhost,127.0.0.1
+    # No volume on worker_install/db: avoids reusing amd64 Postgres after switching to arm64. DB re-inits on container restart.
+    command: ["python", "-c", "from src.workers.execution_worker import run_worker_loop; run_worker_loop()"]
+    restart: unless-stopped
+
+  scheduler:
+    build: .
+    platform: linux/arm64
+    env_file: .env
+    command: ["python", "-c", "from src.scheduler.cron_scheduler import run_scheduler; run_scheduler()"]
+    restart: unless-stopped

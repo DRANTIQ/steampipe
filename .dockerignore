@@ -1,0 +1,33 @@
+# Do not bake secrets into the image; use --env-file .env or compose env_file at run time
+.env
+.env.*
+!.env.example
+*user_input*
+
+# Local dev
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+local/
+*.log
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Git
+.git/
+.gitignore
+
+# Steampipe local state (worker will create at runtime)
+/tmp/
+
+# Optional: avoid copying large or irrelevant dirs
+steampipe/
+*.md
+!README.md

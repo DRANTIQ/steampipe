@@ -1,0 +1,254 @@
+{
+  "queries": [
+    {
+      "name": "list_ec2_instances",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select instance_id, instance_state, instance_type, placement_availability_zone from aws_ec2_instance;",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": { "category": "inventory" }
+    },
+    {
+      "name": "list_s3_buckets",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select name, region, account_id, creation_date from aws_s3_bucket;",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": { "category": "inventory" }
+    },
+    {
+      "name": "list_iam_users",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select name, user_id, path, create_date, password_last_used from aws_iam_user;",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": { "category": "inventory" }
+    },
+    {
+      "name": "list_rds_instances",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select db_instance_identifier, class, engine, engine_version, db_instance_status from aws_rds_db_instance;",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": { "category": "inventory" }
+    },
+    {
+      "name": "ec2_count_by_az_and_type",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select placement_availability_zone as az, instance_type, count(*) from aws_ec2_instance group by placement_availability_zone, instance_type;",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": { "category": "inventory" }
+    },
+    {
+      "name": "s3_buckets_versioning_disabled",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select name, region, account_id, versioning_enabled from aws_s3_bucket where not versioning_enabled;",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations 4.0",
+        "control_ref": "s3-versioning",
+        "required_columns": ["name", "versioning_enabled"],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "s3_buckets_default_encryption_disabled",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select name, server_side_encryption_configuration from aws_s3_bucket where server_side_encryption_configuration is null;",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations 4.0",
+        "control_ref": "s3-encryption",
+        "required_columns": ["name", "server_side_encryption_configuration"],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "s3_buckets_public_access_not_blocked",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select name, block_public_acls, block_public_policy, ignore_public_acls, restrict_public_buckets from aws_s3_bucket where not block_public_acls or not block_public_policy or not ignore_public_acls or not restrict_public_buckets;",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations 4.0",
+        "control_ref": "s3-public-access",
+        "required_columns": ["name", "block_public_acls", "block_public_policy", "ignore_public_acls", "restrict_public_buckets"],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "s3_buckets_public_policy",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select name, bucket_policy_is_public from aws_s3_bucket where bucket_policy_is_public;",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "required_columns": ["name", "bucket_policy_is_public"],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "ec2_detailed_monitoring_disabled",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select instance_id, monitoring_state from aws_ec2_instance where monitoring_state = 'disabled';",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "required_columns": ["instance_id", "monitoring_state"],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "rds_publicly_accessible",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select db_instance_identifier, publicly_accessible from aws_rds_db_instance where publicly_accessible;",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations 4.0",
+        "control_ref": "rds-public",
+        "required_columns": ["db_instance_identifier", "publicly_accessible"],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "rds_iam_auth_disabled",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select db_instance_identifier, iam_database_authentication_enabled from aws_rds_db_instance where not iam_database_authentication_enabled;",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "required_columns": ["db_instance_identifier", "iam_database_authentication_enabled"],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "iam_access_keys_inactive",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select access_key_id, user_name, status from aws_iam_access_key where status = 'Inactive';",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "required_columns": ["access_key_id", "user_name", "status"]
+      }
+    },
+    {
+      "name": "iam_access_key_count_by_user",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select user_name, count(access_key_id) as access_key_count from aws_iam_access_key group by user_name;",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "required_columns": ["user_name", "access_key_count"]
+      }
+    },
+    {
+      "name": "iam_users_with_admin_access",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select name as user_name, split_part(attachments, '/', 2) as attached_policies from aws_iam_user cross join jsonb_array_elements_text(attached_policy_arns) as attachments where split_part(attachments, '/', 2) = 'AdministratorAccess';",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "required_columns": ["user_name", "attached_policies"],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "ec2_count_by_instance_type",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select instance_type, count(instance_type) as count from aws_ec2_instance group by instance_type;",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": { "category": "cost" }
+    },
+    {
+      "name": "list_ec2_instances_limit_5",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select instance_id, instance_state from aws_ec2_instance limit 5;",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": { "category": "inventory" }
+    }
+  ]
+}
