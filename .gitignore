@@ -30,6 +30,7 @@ wheels/
 venv/
 .venv/
 env/
+steampipe/
 .envrc
 
 # Testing / coverage
