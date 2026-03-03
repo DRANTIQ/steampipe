@@ -10,7 +10,9 @@
       "output_format": "json",
       "schedule_enabled": false,
       "active": true,
-      "extra_metadata": { "category": "inventory" }
+      "extra_metadata": {
+        "category": "inventory"
+      }
     },
     {
       "name": "list_s3_buckets",
@@ -22,7 +24,9 @@
       "output_format": "json",
       "schedule_enabled": false,
       "active": true,
-      "extra_metadata": { "category": "inventory" }
+      "extra_metadata": {
+        "category": "inventory"
+      }
     },
     {
       "name": "list_iam_users",
@@ -34,7 +38,9 @@
       "output_format": "json",
       "schedule_enabled": false,
       "active": true,
-      "extra_metadata": { "category": "inventory" }
+      "extra_metadata": {
+        "category": "inventory"
+      }
     },
     {
       "name": "list_rds_instances",
@@ -46,7 +52,9 @@
       "output_format": "json",
       "schedule_enabled": false,
       "active": true,
-      "extra_metadata": { "category": "inventory" }
+      "extra_metadata": {
+        "category": "inventory"
+      }
     },
     {
       "name": "ec2_count_by_az_and_type",
@@ -58,7 +66,9 @@
       "output_format": "json",
       "schedule_enabled": false,
       "active": true,
-      "extra_metadata": { "category": "inventory" }
+      "extra_metadata": {
+        "category": "inventory"
+      }
     },
     {
       "name": "s3_buckets_versioning_disabled",
@@ -74,7 +84,10 @@
         "category": "compliance",
         "framework": "CIS AWS Foundations Benchmark v6.0.0",
         "control_ref": "s3-versioning",
-        "required_columns": ["name", "versioning_enabled"],
+        "required_columns": [
+          "name",
+          "versioning_enabled"
+        ],
         "pass_rule": "zero_rows"
       }
     },
@@ -92,25 +105,10 @@
         "category": "compliance",
         "framework": "CIS AWS Foundations Benchmark v6.0.0",
         "control_ref": "s3-encryption",
-        "required_columns": ["name", "server_side_encryption_configuration"],
-        "pass_rule": "zero_rows"
-      }
-    },
-    {
-      "name": "s3_buckets_public_access_not_blocked",
-      "version": "1.0",
-      "provider": "aws",
-      "plugin": "aws",
-      "query_text": "select name, block_public_acls, block_public_policy, ignore_public_acls, restrict_public_buckets from aws_s3_bucket where not block_public_acls or not block_public_policy or not ignore_public_acls or not restrict_public_buckets;",
-      "execution_mode": "single_account",
-      "output_format": "json",
-      "schedule_enabled": false,
-      "active": true,
-      "extra_metadata": {
-        "category": "compliance",
-        "framework": "CIS AWS Foundations Benchmark v6.0.0",
-        "control_ref": "s3-public-access",
-        "required_columns": ["name", "block_public_acls", "block_public_policy", "ignore_public_acls", "restrict_public_buckets"],
+        "required_columns": [
+          "name",
+          "server_side_encryption_configuration"
+        ],
         "pass_rule": "zero_rows"
       }
     },
@@ -127,7 +125,10 @@
       "extra_metadata": {
         "category": "compliance",
         "framework": "CIS AWS Foundations Benchmark v6.0.0",
-        "required_columns": ["name", "bucket_policy_is_public"],
+        "required_columns": [
+          "name",
+          "bucket_policy_is_public"
+        ],
         "pass_rule": "zero_rows"
       }
     },
@@ -144,25 +145,10 @@
       "extra_metadata": {
         "category": "compliance",
         "framework": "CIS AWS Foundations Benchmark v6.0.0",
-        "required_columns": ["instance_id", "monitoring_state"],
-        "pass_rule": "zero_rows"
-      }
-    },
-    {
-      "name": "rds_publicly_accessible",
-      "version": "1.0",
-      "provider": "aws",
-      "plugin": "aws",
-      "query_text": "select db_instance_identifier, publicly_accessible from aws_rds_db_instance where publicly_accessible;",
-      "execution_mode": "single_account",
-      "output_format": "json",
-      "schedule_enabled": false,
-      "active": true,
-      "extra_metadata": {
-        "category": "compliance",
-        "framework": "CIS AWS Foundations Benchmark v6.0.0",
-        "control_ref": "rds-public",
-        "required_columns": ["db_instance_identifier", "publicly_accessible"],
+        "required_columns": [
+          "instance_id",
+          "monitoring_state"
+        ],
         "pass_rule": "zero_rows"
       }
     },
@@ -178,7 +164,10 @@
       "active": true,
       "extra_metadata": {
         "category": "compliance",
-        "required_columns": ["db_instance_identifier", "iam_database_authentication_enabled"],
+        "required_columns": [
+          "db_instance_identifier",
+          "iam_database_authentication_enabled"
+        ],
         "pass_rule": "zero_rows"
       }
     },
@@ -195,7 +184,11 @@
       "extra_metadata": {
         "category": "compliance",
         "framework": "CIS AWS Foundations Benchmark v6.0.0",
-        "required_columns": ["access_key_id", "user_name", "status"]
+        "required_columns": [
+          "access_key_id",
+          "user_name",
+          "status"
+        ]
       }
     },
     {
@@ -210,24 +203,10 @@
       "active": true,
       "extra_metadata": {
         "category": "compliance",
-        "required_columns": ["user_name", "access_key_count"]
-      }
-    },
-    {
-      "name": "iam_users_with_admin_access",
-      "version": "1.0",
-      "provider": "aws",
-      "plugin": "aws",
-      "query_text": "select name as user_name, split_part(attachments, '/', 2) as attached_policies from aws_iam_user cross join jsonb_array_elements_text(attached_policy_arns) as attachments where split_part(attachments, '/', 2) = 'AdministratorAccess';",
-      "execution_mode": "single_account",
-      "output_format": "json",
-      "schedule_enabled": false,
-      "active": true,
-      "extra_metadata": {
-        "category": "compliance",
-        "framework": "CIS AWS Foundations Benchmark v6.0.0",
-        "required_columns": ["user_name", "attached_policies"],
-        "pass_rule": "zero_rows"
+        "required_columns": [
+          "user_name",
+          "access_key_count"
+        ]
       }
     },
     {
@@ -240,7 +219,9 @@
       "output_format": "json",
       "schedule_enabled": false,
       "active": true,
-      "extra_metadata": { "category": "cost" }
+      "extra_metadata": {
+        "category": "cost"
+      }
     },
     {
       "name": "list_ec2_instances_limit_5",
@@ -252,7 +233,803 @@
       "output_format": "json",
       "schedule_enabled": false,
       "active": true,
-      "extra_metadata": { "category": "inventory" }
+      "extra_metadata": {
+        "category": "inventory"
+      }
+    },
+    {
+      "name": "cis_2_3_iam_root_access_keys",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select account_id, account_access_keys_present from aws_iam_account_summary where account_access_keys_present > 0",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "2.3",
+        "control_ref": "iam-root-access-keys",
+        "required_columns": [
+          "account_id",
+          "account_access_keys_present"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_2_4_iam_root_mfa",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select account_id, account_mfa_enabled, account_password_present from aws_iam_account_summary where account_mfa_enabled = 0 and account_password_present = 1",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "2.4",
+        "control_ref": "iam-root-mfa",
+        "required_columns": [
+          "account_id",
+          "account_mfa_enabled",
+          "account_password_present"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_2_7_iam_password_min_length",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select minimum_password_length from aws_iam_account_password_policy where minimum_password_length < 14 or minimum_password_length is null",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "2.7",
+        "control_ref": "iam-password-min-length",
+        "required_columns": [
+          "minimum_password_length"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_2_8_iam_password_reuse",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select password_reuse_prevention from aws_iam_account_password_policy where password_reuse_prevention is null or password_reuse_prevention = 0",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "2.8",
+        "control_ref": "iam-password-reuse",
+        "required_columns": [
+          "password_reuse_prevention"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_2_9_iam_user_mfa",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select u.name, u.user_id, u.create_date, u.mfa_enabled from aws_iam_user u where u.password_last_used is not null and (not u.mfa_enabled or u.mfa_enabled is null)",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "2.9",
+        "control_ref": "iam-user-mfa",
+        "required_columns": [
+          "name",
+          "user_id",
+          "mfa_enabled"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_2_11_iam_credentials_unused",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select access_key_id, user_name, status, create_date, last_used from aws_iam_access_key where status = 'Active' and (last_used is null or last_used < (now() - interval '45 days'))",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "2.11",
+        "control_ref": "iam-credentials-unused",
+        "required_columns": [
+          "access_key_id",
+          "user_name",
+          "status",
+          "last_used"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_2_12_iam_single_access_key",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select user_name, count(*) as access_key_count from aws_iam_access_key where status = 'Active' group by user_name having count(*) > 1",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "2.12",
+        "control_ref": "iam-single-access-key",
+        "required_columns": [
+          "user_name",
+          "access_key_count"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_2_13_iam_access_key_rotation",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select access_key_id, user_name, create_date from aws_iam_access_key where status = 'Active' and create_date < (now() - interval '90 days')",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "2.13",
+        "control_ref": "iam-access-key-rotation",
+        "required_columns": [
+          "access_key_id",
+          "user_name",
+          "create_date"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_2_14_iam_permissions_via_groups",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select u.name as user_name, u.user_id from aws_iam_user u where u.attached_policy_arns is not null and jsonb_array_length(u.attached_policy_arns) > 0 and (u.groups is null or jsonb_array_length(u.groups) = 0)",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "2.14",
+        "control_ref": "iam-permissions-via-groups",
+        "required_columns": [
+          "user_name",
+          "user_id"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_2_15_iam_admin_policies",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select name as user_name, split_part(attachments, '/', 2) as attached_policy from aws_iam_user cross join jsonb_array_elements_text(attached_policy_arns) as attachments where split_part(attachments, '/', 2) = 'AdministratorAccess' union all select r.name as role_name, split_part(attachments, '/', 2) as attached_policy from aws_iam_role r cross join jsonb_array_elements_text(attached_policy_arns) as attachments where split_part(attachments, '/', 2) = 'AdministratorAccess'",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "2.15",
+        "control_ref": "iam-admin-policies",
+        "required_columns": [
+          "user_name",
+          "attached_policy"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_2_16_iam_support_role",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select a.account_id from aws_account a where not exists (select 1 from aws_iam_role r where r.attached_policy_arns::text like '%AWSSupportAccess%')",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "2.16",
+        "control_ref": "iam-support-role",
+        "required_columns": [
+          "account_id"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_2_17_iam_instance_roles",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select instance_id, instance_state, iam_instance_profile_arn from aws_ec2_instance where iam_instance_profile_arn is null and instance_state != 'terminated'",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "2.17",
+        "control_ref": "iam-instance-roles",
+        "required_columns": [
+          "instance_id",
+          "instance_state",
+          "iam_instance_profile_arn"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_2_18_iam_expired_certificates",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select name, certificate_id, upload_date, expiration from aws_iam_server_certificate where expiration < now()",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "2.18",
+        "control_ref": "iam-expired-certificates",
+        "required_columns": [
+          "name",
+          "certificate_id",
+          "expiration"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_2_19_iam_access_analyzer",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select region, name, status from aws_accessanalyzer_analyzer where status != 'ACTIVE'",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "2.19",
+        "control_ref": "iam-access-analyzer",
+        "required_columns": [
+          "region",
+          "name",
+          "status"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_3_1_1_s3_deny_http",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select name, region, account_id, bucket_policy from aws_s3_bucket where bucket_policy is null or bucket_policy::text not like '%aws:SecureTransport%' and bucket_policy::text not like '%false%'",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "3.1.1",
+        "control_ref": "s3-deny-http",
+        "required_columns": [
+          "name",
+          "region",
+          "bucket_policy"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_3_1_4_s3_public_access",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select name, block_public_acls, block_public_policy, ignore_public_acls, restrict_public_buckets from aws_s3_bucket where not block_public_acls or not block_public_policy or not ignore_public_acls or not restrict_public_buckets",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "3.1.4",
+        "control_ref": "s3-public-access",
+        "required_columns": [
+          "name",
+          "block_public_acls",
+          "block_public_policy",
+          "ignore_public_acls",
+          "restrict_public_buckets"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_3_2_1_rds_encryption",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select db_instance_identifier, storage_encrypted from aws_rds_db_instance where storage_encrypted = false",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "3.2.1",
+        "control_ref": "rds-encryption",
+        "required_columns": [
+          "db_instance_identifier",
+          "storage_encrypted"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_3_2_2_rds_auto_upgrade",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select db_instance_identifier, auto_minor_version_upgrade from aws_rds_db_instance where auto_minor_version_upgrade = false",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "3.2.2",
+        "control_ref": "rds-auto-upgrade",
+        "required_columns": [
+          "db_instance_identifier",
+          "auto_minor_version_upgrade"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_3_2_3_rds_public",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select db_instance_identifier, publicly_accessible from aws_rds_db_instance where publicly_accessible = true",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "3.2.3",
+        "control_ref": "rds-public",
+        "required_columns": [
+          "db_instance_identifier",
+          "publicly_accessible"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_3_3_1_efs_encryption",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select file_system_id, name, encrypted from aws_efs_file_system where encrypted = false",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "3.3.1",
+        "control_ref": "efs-encryption",
+        "required_columns": [
+          "file_system_id",
+          "name",
+          "encrypted"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_4_2_cloudtrail_validation",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select name, region, log_file_validation_enabled from aws_cloudtrail_trail where log_file_validation_enabled = false",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "4.2",
+        "control_ref": "cloudtrail-validation",
+        "required_columns": [
+          "name",
+          "region",
+          "log_file_validation_enabled"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_4_3_config_enabled",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select name, region, recording from aws_config_configuration_recorder where recording = false",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "4.3",
+        "control_ref": "config-enabled",
+        "required_columns": [
+          "name",
+          "region",
+          "recording"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_4_5_cloudtrail_kms",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select name, region, kms_key_id from aws_cloudtrail_trail where kms_key_id is null",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "4.5",
+        "control_ref": "cloudtrail-kms",
+        "required_columns": [
+          "name",
+          "region",
+          "kms_key_id"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_4_6_kms_rotation",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select k.id, k.region, k.key_rotation_enabled from aws_kms_key k where k.key_manager = 'CUSTOMER' and (not k.key_rotation_enabled or k.key_rotation_enabled is null)",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "4.6",
+        "control_ref": "kms-rotation",
+        "required_columns": [
+          "id",
+          "region"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_4_7_vpc_flow_logs",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select v.vpc_id, v.region from aws_vpc v where not exists (select 1 from aws_vpc_flow_log f where f.resource_id = v.vpc_id and f.deliver_logs_status = 'SUCCESS')",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "4.7",
+        "control_ref": "vpc-flow-logs",
+        "required_columns": [
+          "vpc_id",
+          "region"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_4_8_s3_write_logging",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select name, region from aws_s3_bucket where not exists (select 1 from aws_cloudtrail_trail t, jsonb_array_elements(t.event_selectors) as es where (es->'DataResources')::text like '%s3%' and es->>'ReadWriteType' = 'Write')",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "4.8",
+        "control_ref": "s3-write-logging",
+        "required_columns": [
+          "name",
+          "region"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_4_9_s3_read_logging",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select name, region from aws_s3_bucket where not exists (select 1 from aws_cloudtrail_trail t, jsonb_array_elements(t.event_selectors) as es where (es->'DataResources')::text like '%s3%' and (es->>'ReadWriteType' = 'ReadOnly' or es->>'ReadWriteType' = 'All'))",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "4.9",
+        "control_ref": "s3-read-logging",
+        "required_columns": [
+          "name",
+          "region"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_5_16_security_hub_enabled",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select region from aws_region r where not exists (select 1 from aws_securityhub_hub h where h.region = r.region)",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "5.16",
+        "control_ref": "security-hub-enabled",
+        "required_columns": [
+          "region"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_6_1_1_ebs_encryption_default",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select region, default_ebs_encryption_enabled from aws_ec2_regional_settings where default_ebs_encryption_enabled = false",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "6.1.1",
+        "control_ref": "ebs-encryption-default",
+        "required_columns": [
+          "region",
+          "default_ebs_encryption_enabled"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_6_1_2_cifs_restricted",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select sg.group_id, sg.group_name, sg.vpc_id, r.from_port, r.to_port, r.cidr_ipv4, r.cidr_ipv6 from aws_vpc_security_group sg join aws_vpc_security_group_rule r on sg.group_id = r.group_id where not r.is_egress and r.from_port <= 445 and r.to_port >= 445 and (r.cidr_ipv4 = '0.0.0.0/0' or r.cidr_ipv6 = '::/0')",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "6.1.2",
+        "control_ref": "cifs-restricted",
+        "required_columns": [
+          "group_id",
+          "group_name",
+          "from_port",
+          "to_port",
+          "cidr_ipv4"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_6_2_nacl_admin_ports",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select acl.network_acl_id, acl.region, acl.account_id from aws_vpc_network_acl acl, jsonb_array_elements(acl.entries) as att where att->>'Egress' = 'false' and (att->>'CidrBlock' = '0.0.0.0/0' or att->>'Ipv6CidrBlock' = '::/0') and att->>'RuleAction' = 'allow' and ((att->>'Protocol' = '-1' and att->'PortRange' is null) or (att->'PortRange' is not null and att->>'Protocol' in ('6','17') and (((att->'PortRange'->>'From')::int <= 22 and (att->'PortRange'->>'To')::int >= 22) or ((att->'PortRange'->>'From')::int <= 3389 and (att->'PortRange'->>'To')::int >= 3389))))",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "6.2",
+        "control_ref": "nacl-admin-ports",
+        "required_columns": [
+          "network_acl_id",
+          "region",
+          "account_id"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_6_3_sg_admin_ports_ipv4",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select sg.group_id, sg.group_name, r.from_port, r.to_port, r.cidr_ipv4 from aws_vpc_security_group sg join aws_vpc_security_group_rule r on sg.group_id = r.group_id where not r.is_egress and r.cidr_ipv4 = '0.0.0.0/0' and ((r.from_port <= 22 and r.to_port >= 22) or (r.from_port <= 3389 and r.to_port >= 3389))",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "6.3",
+        "control_ref": "sg-admin-ports-ipv4",
+        "required_columns": [
+          "group_id",
+          "group_name",
+          "from_port",
+          "to_port",
+          "cidr_ipv4"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_6_4_sg_admin_ports_ipv6",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select sg.group_id, sg.group_name, r.from_port, r.to_port, r.cidr_ipv6 from aws_vpc_security_group sg join aws_vpc_security_group_rule r on sg.group_id = r.group_id where not r.is_egress and r.cidr_ipv6 = '::/0' and ((r.from_port <= 22 and r.to_port >= 22) or (r.from_port <= 3389 and r.to_port >= 3389))",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "6.4",
+        "control_ref": "sg-admin-ports-ipv6",
+        "required_columns": [
+          "group_id",
+          "group_name",
+          "from_port",
+          "to_port",
+          "cidr_ipv6"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_6_5_default_sg_restricts_traffic",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select sg.group_id, sg.group_name, sg.vpc_id from aws_vpc_security_group sg where sg.group_name = 'default' and exists (select 1 from aws_vpc_security_group_rule r where r.group_id = sg.group_id and not r.is_egress and (r.cidr_ipv4 = '0.0.0.0/0' or r.cidr_ipv6 = '::/0'))",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "6.5",
+        "control_ref": "default-sg-restricts-traffic",
+        "required_columns": [
+          "group_id",
+          "group_name",
+          "vpc_id"
+        ],
+        "pass_rule": "zero_rows"
+      }
+    },
+    {
+      "name": "cis_6_7_ec2_imdsv2",
+      "version": "1.0",
+      "provider": "aws",
+      "plugin": "aws",
+      "query_text": "select instance_id, instance_state, metadata_options from aws_ec2_instance where (metadata_options->>'HttpTokens') is distinct from 'required' and instance_state != 'terminated'",
+      "execution_mode": "single_account",
+      "output_format": "json",
+      "schedule_enabled": false,
+      "active": true,
+      "extra_metadata": {
+        "category": "compliance",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "control_id": "6.7",
+        "control_ref": "ec2-imdsv2",
+        "required_columns": [
+          "instance_id",
+          "instance_state",
+          "metadata_options"
+        ],
+        "pass_rule": "zero_rows"
+      }
     }
   ]
 }
