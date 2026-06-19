@@ -77,9 +77,3 @@ plugins/
 .dmypy.json
 dmypy.json
 
-user_input.md
-docs/
-prompt.md
-GIT.md
-cursor_commands.md
-plugins/
