@@ -1,26 +1,64 @@
-# Run API, worker, and scheduler with .env loaded. Build: docker compose build
-# Up: docker compose up (or docker compose up -d). Requires external Postgres + Redis (set in .env).
-# On Apple Silicon: platform linux/arm64 (set below). On Intel/AMD: use linux/amd64 or remove platform.
+# Run API, worker, scheduler, Postgres, and Redis. Build: docker compose build
+# Up: docker compose up (or docker compose up -d).
+# When running in Docker, .env must use hostnames: postgres, redis (not localhost).
 #
 # Worker AWS errors: "StatusCode: 0, request send failed" / "GetCallerIdentity exceeded maximum number of attempts"
 # means the container cannot reach AWS (STS/APIs). Ensure:
 #   - Worker has outbound HTTPS (e.g. docker compose run --rm worker curl -sI https://sts.amazonaws.com)
 #   - If behind a proxy: set HTTP_PROXY / HTTPS_PROXY (and NO_PROXY if needed) under worker.environment
 services:
+  postgres:
+    image: postgres:15-alpine
+    platform: linux/arm64
+    environment:
+      POSTGRES_USER: steampipe
+      POSTGRES_PASSWORD: steampipe
+      POSTGRES_DB: steampipe
+    ports:
+      - "5432:5432"
+    volumes:
+      - steampipe_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U steampipe -d steampipe"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    platform: linux/arm64
+    ports:
+      - "6379:6379"
+    volumes:
+      - steampipe_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   api:
     build: .
     platform: linux/arm64
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql://steampipe:steampipe@postgres:5432/steampipe
+      REDIS_URL: redis://redis:6379/0
     ports:
       - "8000:8000"
     command: ["uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "8000"]
     restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
 
   worker:
     build: .
     platform: linux/arm64
     env_file: .env
     environment:
+      DATABASE_URL: postgresql://steampipe:steampipe@postgres:5432/steampipe
+      REDIS_URL: redis://redis:6379/0
       STEAMPIPE_CONFIG_DIR: /app/steampipe
       STEAMPIPE_PATH: /usr/local/bin/steampipe
       HOME: /app
@@ -32,10 +70,23 @@ services:
     # No volume on worker_install/db: avoids reusing amd64 Postgres after switching to arm64. DB re-inits on container restart.
     command: ["python", "-c", "from src.workers.execution_worker import run_worker_loop; run_worker_loop()"]
     restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
 
   scheduler:
     build: .
     platform: linux/arm64
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql://steampipe:steampipe@postgres:5432/steampipe
+      REDIS_URL: redis://redis:6379/0
     command: ["python", "-c", "from src.scheduler.cron_scheduler import run_scheduler; run_scheduler()"]
     restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+volumes:
+  steampipe_postgres_data:
+  steampipe_redis_data:

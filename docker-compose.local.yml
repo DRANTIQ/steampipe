@@ -1,0 +1,40 @@
+# Local Postgres + Redis for development
+# Run: docker compose -f docker-compose.local.yml up -d
+# Then use in .env:
+#   DATABASE_URL=postgresql://steampipe:steampipe@localhost:5432/steampipe
+#   REDIS_URL=redis://localhost:6379/0
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    platform: linux/arm64
+    environment:
+      POSTGRES_USER: steampipe
+      POSTGRES_PASSWORD: steampipe
+      POSTGRES_DB: steampipe
+    ports:
+      - "5432:5432"
+    volumes:
+      - steampipe_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U steampipe -d steampipe"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    platform: linux/arm64
+    ports:
+      - "6379:6379"
+    volumes:
+      - steampipe_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  steampipe_postgres_data:
+  steampipe_redis_data:

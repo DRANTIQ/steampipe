@@ -1,0 +1,7 @@
+# CIS AWS Foundations Benchmark v6.0.0 — Control Mapping
+#
+# The full control definitions are in cis_v6_controls.yaml (64 controls).
+# Copy cis_v6_controls.yaml to your config path, or use it as the source of truth.
+#
+# Reference: docs/CIS_V6_REFERENCE.md
+# PDF: docs/CIS_Amazon_Web_Services_Foundations_Benchmark_v6.0.0.pdf

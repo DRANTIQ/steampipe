@@ -1,0 +1,14 @@
+{
+  "rows": [
+    {
+      "name": "bucket-without-versioning",
+      "region": "us-east-1",
+      "versioning_enabled": false
+    },
+    {
+      "name": "another-bucket",
+      "region": "us-east-1",
+      "versioning_enabled": false
+    }
+  ]
+}
