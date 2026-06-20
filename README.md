@@ -49,6 +49,7 @@ Multi-tenant platform for running **Steampipe** SQL and benchmark queries across
 
 ## Docs
 
+- **docs/STAGE1_FULL_GUIDE.md** – Stage 1 full guide: file structure, all APIs, data flow, how to run
 - **LOCAL_DEVELOPMENT.md** – Migrations, dummy data, local run
 - **Testing.md** – Running services and pytest
 - **user_input.md** – Canonical `.env` values (Postgres, Redis, S3)
