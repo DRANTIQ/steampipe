@@ -1,6 +1,10 @@
 # Run API, worker, scheduler, Postgres, and Redis. Build: docker compose build
 # Up: docker compose up (or docker compose up -d).
-# When running in Docker, .env must use hostnames: postgres, redis (not localhost).
+#
+# Remote Postgres + Redis (Supabase, Upstash): use docker-compose.remote.yml instead:
+#   docker compose -f docker-compose.remote.yml up
+#
+# When running in Docker with LOCAL postgres/redis below, .env hostnames must be postgres, redis (not localhost).
 #
 # Worker AWS errors: "StatusCode: 0, request send failed" / "GetCallerIdentity exceeded maximum number of attempts"
 # means the container cannot reach AWS (STS/APIs). Ensure:

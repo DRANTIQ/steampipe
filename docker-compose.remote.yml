@@ -1,0 +1,42 @@
+# API + worker + scheduler only — uses DATABASE_URL and REDIS_URL from .env
+# (Supabase, Upstash, etc.). No local Postgres or Redis containers.
+#
+# Build:  docker compose -f docker-compose.remote.yml build
+# Up:     docker compose -f docker-compose.remote.yml up
+# Init:   docker compose -f docker-compose.remote.yml run --rm api alembic upgrade head
+#
+# Requires .env with remote DATABASE_URL, REDIS_URL, AWS creds, and optionally:
+#   USE_LOCAL_STORAGE=true
+#   LOCAL_STORAGE_PATH=./local/snapshots
+
+services:
+  api:
+    build: .
+    platform: linux/arm64
+    env_file: .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./local/snapshots:/app/local/snapshots
+    command: ["uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "8000"]
+    restart: unless-stopped
+
+  worker:
+    build: .
+    platform: linux/arm64
+    env_file: .env
+    environment:
+      STEAMPIPE_CONFIG_DIR: /app/steampipe
+      STEAMPIPE_PATH: /usr/local/bin/steampipe
+      HOME: /app
+    volumes:
+      - ./local/snapshots:/app/local/snapshots
+    command: ["python", "-c", "from src.workers.execution_worker import run_worker_loop; run_worker_loop()"]
+    restart: unless-stopped
+
+  scheduler:
+    build: .
+    platform: linux/arm64
+    env_file: .env
+    command: ["python", "-c", "from src.scheduler.cron_scheduler import run_scheduler; run_scheduler()"]
+    restart: unless-stopped

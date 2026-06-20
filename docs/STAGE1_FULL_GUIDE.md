@@ -17,7 +17,7 @@ Stage 2 (`cloud-compliance-engine/`) is mentioned briefly at the end for context
 7. [Key services](#7-key-services)
 8. [Scripts reference](#8-scripts-reference)
 9. [Configuration (.env)](#9-configuration-env)
-10. [How to run](#10-how-to-run)
+10. [How to run](#10-how-to-run) — see also [RUN_WITH_REMOTE_DB.md](RUN_WITH_REMOTE_DB.md) for Supabase + Upstash
 11. [Stage 2 (brief)](#11-stage-2-brief)
 12. [Quick reference](#12-quick-reference)
 
@@ -513,7 +513,16 @@ Copy from `env.example`. Key variables:
 
 ## 10. How to run
 
-### Option A — Docker (full stack)
+**Using remote Postgres (Supabase) + Redis (Upstash) with no local DB containers?**  
+See **[RUN_WITH_REMOTE_DB.md](RUN_WITH_REMOTE_DB.md)**. Use:
+
+```bash
+docker compose -f docker-compose.remote.yml up
+```
+
+Do **not** use plain `docker compose up` — it overrides your `.env` URLs with local Postgres/Redis.
+
+### Option A — Docker (full local stack)
 
 ```bash
 docker compose up -d
@@ -532,7 +541,16 @@ docker compose down
 docker compose down -v
 ```
 
-### Option B — Remote DB + Redis, local processes
+### Option B — Docker (remote DB only)
+
+Api + worker + scheduler only; `DATABASE_URL` and `REDIS_URL` from `.env`:
+
+```bash
+docker compose -f docker-compose.remote.yml build
+docker compose -f docker-compose.remote.yml up
+```
+
+### Option C — Remote DB + Redis, local processes
 
 Requires **Python 3.11+** (project uses `str | None` syntax).
 
@@ -548,7 +566,7 @@ python scripts/apply_queries_document.py
 ./scripts/run_scheduler.sh  # terminal 3
 ```
 
-### Option C — Postgres + Redis in Docker, app locally
+### Option D — Postgres + Redis in Docker, app locally
 
 ```bash
 docker compose -f docker-compose.local.yml up -d
@@ -624,4 +642,5 @@ POST /executions → Redis → Worker → Steampipe → AWS → Snapshot + Postg
 | [PLAN_AND_IMPLEMENTATION_SUMMARY.md](PLAN_AND_IMPLEMENTATION_SUMMARY.md) | Plan vs implemented |
 | [CODE_STATUS_AND_FEATURES_TO_ADD.md](CODE_STATUS_AND_FEATURES_TO_ADD.md) | Feature checklist |
 | [FRESH_DB_SETUP.md](../FRESH_DB_SETUP.md) | Reset local DB |
+| [RUN_WITH_REMOTE_DB.md](RUN_WITH_REMOTE_DB.md) | Supabase + Upstash, no local Postgres/Redis |
 | [cloud-compliance-engine/README.md](../cloud-compliance-engine/README.md) | Stage 2 |

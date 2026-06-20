@@ -1,0 +1,1331 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-steampipe-api-v1",
+    "name": "Steampipe Cloud Governance API",
+    "description": "Stage 1 API for multi-tenant Steampipe executions.\n\n## Setup\n1. Import this collection **and** an environment from `postman/environments/`.\n2. Select the environment (top-right): **Steampipe \u2014 Local** or **Steampipe \u2014 Remote (Docker)**.\n3. Run **Smoke Test Workflow** or individual folders \u2014 test scripts save IDs to the **environment**.\n\n## Prerequisites\n- Seeded DB (`python scripts/seed_dummy_data.py`)\n- Running worker for execution endpoints\n\nOpenAPI: {{baseUrl}}/docs\n\nSee `postman/README.md` for Newman and variable conventions.\n\n## Headers (every request)\n| Header | Value | When |\n|--------|-------|------|\n| `Accept` | `application/json` | Always |\n| `Content-Type` | `application/json` | POST / PUT / PATCH with body |\n| `Authorization` | `Bearer {{authToken}}` | When `authToken` is set in environment |\n\nAuth is configured at **collection level** (Authorization \u2192 Bearer Token). See folder **Authentication** for details.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{authToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Require an active Postman environment",
+          "const baseUrl = pm.environment.get('baseUrl');",
+          "if (!baseUrl) {",
+          "    throw new Error('Select a Steampipe environment (Local or Remote Docker) before sending requests.');",
+          "}",
+          "",
+          "// Standard headers (visible in request Headers tab after send, or add explicitly below)",
+          "pm.request.headers.upsert({ key: 'Accept', value: 'application/json' });",
+          "",
+          "// JSON body requests",
+          "if (['POST', 'PUT', 'PATCH'].includes(pm.request.method)) {",
+          "    const body = pm.request.body;",
+          "    if (body && body.mode === 'raw' && body.raw) {",
+          "        pm.request.headers.upsert({ key: 'Content-Type', value: 'application/json' });",
+          "    }",
+          "}",
+          "",
+          "// Auth: collection uses Bearer {{authToken}} (Authorization tab \u2192 Inherit from parent)",
+          "const token = pm.environment.get('authToken');",
+          "if (!token && pm.request.auth && pm.request.auth.type === 'bearer') {",
+          "    // Dev mode: API_AUTH_REQUIRED=false \u2014 no token needed",
+          "    pm.request.auth = { type: 'noauth' };",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.test('Response time under 10s', function () {",
+          "    pm.expect(pm.response.responseTime).to.be.below(10000);",
+          "});"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Authentication",
+      "description": "How auth works with this API.\n\n- **Dev (default):** `API_AUTH_REQUIRED=false` \u2014 leave `authToken` empty; Authorization header is skipped automatically.\n- **Production:** set `authToken` in the active environment; collection sends `Authorization: Bearer {{authToken}}`.\n\nNote: JWT validation is not wired in Stage 1 yet (`src/api/deps.py`). Headers are included for forward compatibility.",
+      "item": [
+        {
+          "name": "How auth works (read me)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/docs",
+            "description": "OpenAPI docs. No auth required in dev.\n\n**Environment variable:** `authToken`\n\n**Header sent:** `Authorization: Bearer <token>`"
+          },
+          "auth": {
+            "type": "inherit"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Health & Metrics",
+      "description": "Liveness and observability endpoints. None of these require Postgres.",
+      "item": [
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "Expected response format"
+              }
+            ],
+            "url": "{{baseUrl}}/health",
+            "description": "Liveness probe. Returns `{\"status\":\"healthy\"}`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Body has status healthy', () => {",
+                  "    pm.expect(pm.response.json().status).to.eql('healthy');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [],
+          "auth": {
+            "type": "noauth"
+          }
+        },
+        {
+          "name": "Ready",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "Expected response format"
+              }
+            ],
+            "url": "{{baseUrl}}/ready"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": [],
+          "auth": {
+            "type": "noauth"
+          }
+        },
+        {
+          "name": "Live",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "Expected response format"
+              }
+            ],
+            "url": "{{baseUrl}}/live"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": [],
+          "auth": {
+            "type": "noauth"
+          }
+        },
+        {
+          "name": "Metrics (Prometheus)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "Expected response format"
+              }
+            ],
+            "url": "{{baseUrl}}/metrics",
+            "description": "Prometheus text format metrics."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": [],
+          "auth": {
+            "type": "noauth"
+          }
+        }
+      ],
+      "auth": {
+        "type": "noauth"
+      }
+    },
+    {
+      "name": "Tenants",
+      "item": [
+        {
+          "name": "List Tenants",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "Expected response format"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/{{apiVersion}}/tenants?skip=0&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "{{apiVersion}}",
+                "tenants"
+              ],
+              "query": [
+                {
+                  "key": "skip",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "active",
+                  "value": "true",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Lists tenants. On success, saves first tenant id to environment variable `tenantId`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const tenants = pm.response.json();",
+                  "if (Array.isArray(tenants) && tenants.length > 0) {",
+                  "    pm.environment.set('tenantId', tenants[0].id);",
+                  "    console.log('tenantId \u2192', tenants[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": [],
+          "auth": {
+            "type": "inherit"
+          }
+        },
+        {
+          "name": "Get Tenant",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "Expected response format"
+              }
+            ],
+            "url": "{{baseUrl}}/api/{{apiVersion}}/tenants/{{tenantId}}",
+            "description": "Requires `tenantId` in the active environment."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('tenantId')) {",
+                  "    throw new Error('tenantId is empty \u2014 run List Tenants first or set it in the environment.');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns requested tenant', () => {",
+                  "    pm.expect(pm.response.json().id).to.eql(pm.environment.get('tenantId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [],
+          "auth": {
+            "type": "inherit"
+          }
+        },
+        {
+          "name": "Create Tenant",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "Expected response format"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "description": "JSON request body"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{tenantName}}\",\n  \"description\": \"Created via Postman\",\n  \"plan_type\": \"free\",\n  \"max_accounts\": 5,\n  \"max_queries\": 20,\n  \"max_executions_per_day\": 100\n}"
+            },
+            "url": "{{baseUrl}}/api/{{apiVersion}}/tenants",
+            "description": "Creates a tenant. Pre-request generates a unique `tenantName` to avoid 409 conflicts."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('tenantName', `postman-tenant-${Date.now()}`);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Has id', () => pm.expect(body.id).to.be.a('string').and.not.empty);",
+                  "pm.environment.set('tenantId', body.id);"
+                ]
+              }
+            }
+          ],
+          "response": [],
+          "auth": {
+            "type": "inherit"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Accounts",
+      "item": [
+        {
+          "name": "List Accounts",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "Expected response format"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/{{apiVersion}}/tenants/{{tenantId}}/accounts?skip=0&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "{{apiVersion}}",
+                "tenants",
+                "{{tenantId}}",
+                "accounts"
+              ],
+              "query": [
+                {
+                  "key": "skip",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "active",
+                  "value": "true",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Lists cloud accounts for a tenant. Prefers `defaultProvider` (aws) when saving `accountId`."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('tenantId')) {",
+                  "    throw new Error('tenantId is empty \u2014 run List Tenants first.');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const accounts = pm.response.json();",
+                  "const provider = pm.environment.get('defaultProvider') || 'aws';",
+                  "const match = accounts.find(a => a.provider === provider) || accounts[0];",
+                  "if (match) {",
+                  "    pm.environment.set('accountId', match.id);",
+                  "    console.log('accountId \u2192', match.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": [],
+          "auth": {
+            "type": "inherit"
+          }
+        },
+        {
+          "name": "Create Account (AWS)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "Expected response format"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "description": "JSON request body"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"{{defaultProvider}}\",\n  \"account_id\": \"123456789012\",\n  \"region\": \"{{defaultRegion}}\",\n  \"name\": \"AWS Main\",\n  \"secret_arn\": null,\n  \"extra_metadata\": null\n}"
+            },
+            "url": "{{baseUrl}}/api/{{apiVersion}}/tenants/{{tenantId}}/accounts"
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('tenantId')) {",
+                  "    throw new Error('tenantId is empty \u2014 run List Tenants first.');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('accountId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "response": [],
+          "auth": {
+            "type": "inherit"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Queries",
+      "item": [
+        {
+          "name": "List Queries",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "Expected response format"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/{{apiVersion}}/queries?provider={{defaultProvider}}&active=true&skip=0&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "{{apiVersion}}",
+                "queries"
+              ],
+              "query": [
+                {
+                  "key": "provider",
+                  "value": "{{defaultProvider}}"
+                },
+                {
+                  "key": "active",
+                  "value": "true"
+                },
+                {
+                  "key": "skip",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const queries = pm.response.json();",
+                  "const provider = pm.environment.get('defaultProvider') || 'aws';",
+                  "const match = queries.find(q => q.provider === provider) || queries[0];",
+                  "if (match) {",
+                  "    pm.environment.set('queryId', match.id);",
+                  "    console.log('queryId \u2192', match.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": [],
+          "auth": {
+            "type": "inherit"
+          }
+        },
+        {
+          "name": "Create Query (EC2 sample)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "Expected response format"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "description": "JSON request body"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"list_ec2_instances\",\n  \"version\": \"1.0\",\n  \"provider\": \"aws\",\n  \"plugin\": \"aws\",\n  \"query_text\": \"select instance_id, instance_state, instance_type, placement_availability_zone from aws_ec2_instance limit 10\",\n  \"execution_mode\": \"single_account\",\n  \"output_format\": \"json\",\n  \"schedule_enabled\": false\n}"
+            },
+            "url": "{{baseUrl}}/api/{{apiVersion}}/queries"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('queryId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "response": [],
+          "auth": {
+            "type": "inherit"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Schedules",
+      "item": [
+        {
+          "name": "List Schedules",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "Expected response format"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/{{apiVersion}}/schedules?tenant_id={{tenantId}}&enabled=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "{{apiVersion}}",
+                "schedules"
+              ],
+              "query": [
+                {
+                  "key": "tenant_id",
+                  "value": "{{tenantId}}"
+                },
+                {
+                  "key": "enabled",
+                  "value": "true"
+                },
+                {
+                  "key": "skip",
+                  "value": "0",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const schedules = pm.response.json();",
+                  "if (schedules.length > 0) {",
+                  "    pm.environment.set('scheduleId', schedules[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": [],
+          "auth": {
+            "type": "inherit"
+          }
+        },
+        {
+          "name": "Create Schedule",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "Expected response format"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "description": "JSON request body"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"query_id\": \"{{queryId}}\",\n  \"cron_expression\": \"0 * * * *\",\n  \"timezone\": \"UTC\",\n  \"enabled\": true\n}"
+            },
+            "url": "{{baseUrl}}/api/{{apiVersion}}/schedules"
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('tenantId') || !pm.environment.get('queryId')) {",
+                  "    throw new Error('tenantId and queryId required \u2014 run List Tenants and List Queries first.');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('scheduleId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "response": [],
+          "auth": {
+            "type": "inherit"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Executions",
+      "description": "Enqueue Steampipe jobs. Requires a running worker to process the queue.",
+      "item": [
+        {
+          "name": "Create Execution (single job)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "Expected response format"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "description": "JSON request body"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"account_id\": \"{{accountId}}\",\n  \"query_id\": \"{{queryId}}\",\n  \"priority\": 0,\n  \"triggered_by\": \"postman\"\n}"
+            },
+            "url": "{{baseUrl}}/api/{{apiVersion}}/executions"
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "['tenantId', 'accountId', 'queryId'].forEach(key => {",
+                  "    if (!pm.environment.get(key)) {",
+                  "        throw new Error(`${key} is empty \u2014 run List Tenants / Accounts / Queries first.`);",
+                  "    }",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Job queued', () => pm.expect(body.status).to.eql('queued'));",
+                  "pm.environment.set('jobId', body.job_id);",
+                  "console.log('jobId \u2192', body.job_id);"
+                ]
+              }
+            }
+          ],
+          "response": [],
+          "auth": {
+            "type": "inherit"
+          }
+        },
+        {
+          "name": "Create Executions Bulk",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "Expected response format"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "description": "JSON request body"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"account_id\": \"{{accountId}}\",\n  \"query_ids\": [\"{{queryId}}\"],\n  \"priority\": 0,\n  \"triggered_by\": \"postman-bulk\"\n}"
+            },
+            "url": "{{baseUrl}}/api/{{apiVersion}}/executions/bulk"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const ids = pm.response.json().job_ids;",
+                  "if (ids && ids.length > 0) {",
+                  "    pm.environment.set('jobId', ids[0]);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": [],
+          "auth": {
+            "type": "inherit"
+          }
+        },
+        {
+          "name": "Trigger Tenant (all queries \u00d7 accounts)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "Expected response format"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "description": "JSON request body"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"priority\": 0,\n  \"triggered_by\": \"postman-trigger-tenant\"\n}"
+            },
+            "url": "{{baseUrl}}/api/{{apiVersion}}/executions/trigger-tenant"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "if (body.batch_id) {",
+                  "    pm.environment.set('batchId', body.batch_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": [],
+          "auth": {
+            "type": "inherit"
+          }
+        },
+        {
+          "name": "Get Batch Progress",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "Expected response format"
+              }
+            ],
+            "url": "{{baseUrl}}/api/{{apiVersion}}/executions/batches/{{batchId}}"
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('batchId')) {",
+                  "    throw new Error('batchId is empty \u2014 run Trigger Tenant first.');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": [],
+          "auth": {
+            "type": "inherit"
+          }
+        },
+        {
+          "name": "List Executions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "Expected response format"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/{{apiVersion}}/executions?tenant_id={{tenantId}}&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "{{apiVersion}}",
+                "executions"
+              ],
+              "query": [
+                {
+                  "key": "tenant_id",
+                  "value": "{{tenantId}}"
+                },
+                {
+                  "key": "status",
+                  "value": "success",
+                  "disabled": true
+                },
+                {
+                  "key": "skip",
+                  "value": "0",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const jobs = pm.response.json();",
+                  "if (jobs.length > 0) {",
+                  "    pm.environment.set('jobId', jobs[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": [],
+          "auth": {
+            "type": "inherit"
+          }
+        },
+        {
+          "name": "Get Execution Job",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "Expected response format"
+              }
+            ],
+            "url": "{{baseUrl}}/api/{{apiVersion}}/executions/{{jobId}}",
+            "description": "Poll until `status` is `success` or `failed`."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('jobId')) {",
+                  "    throw new Error('jobId is empty \u2014 create or list an execution first.');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "console.log('Job status:', pm.response.json().status);"
+                ]
+              }
+            }
+          ],
+          "response": [],
+          "auth": {
+            "type": "inherit"
+          }
+        },
+        {
+          "name": "Get Execution Result (metadata)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "Expected response format"
+              }
+            ],
+            "url": "{{baseUrl}}/api/{{apiVersion}}/executions/{{jobId}}/result",
+            "description": "Result metadata after job completes."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    pm.test('Has execution_job_id', () => {",
+                  "        pm.expect(pm.response.json().execution_job_id).to.eql(pm.environment.get('jobId'));",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": [],
+          "auth": {
+            "type": "inherit"
+          }
+        },
+        {
+          "name": "Get Execution Result Data (snapshot JSON)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "Expected response format"
+              }
+            ],
+            "url": "{{baseUrl}}/api/{{apiVersion}}/executions/{{jobId}}/result/data",
+            "description": "Steampipe snapshot rows. Only available after successful completion."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    pm.test('Response is JSON object', () => {",
+                  "        pm.expect(pm.response.json()).to.be.an('object');",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": [],
+          "auth": {
+            "type": "inherit"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Smoke Test Workflow",
+      "description": "Run in order with Collection Runner. Requires seeded data and a running worker for steps 5\u20137.",
+      "item": [
+        {
+          "name": "1. Health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "Expected response format"
+              }
+            ],
+            "url": "{{baseUrl}}/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": [],
+          "auth": {
+            "type": "inherit"
+          }
+        },
+        {
+          "name": "2. List Tenants",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "Expected response format"
+              }
+            ],
+            "url": "{{baseUrl}}/api/{{apiVersion}}/tenants"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const tenants = pm.response.json();",
+                  "pm.test('Has tenants', () => pm.expect(tenants.length).to.be.above(0));",
+                  "pm.environment.set('tenantId', tenants[0].id);"
+                ]
+              }
+            }
+          ],
+          "response": [],
+          "auth": {
+            "type": "inherit"
+          }
+        },
+        {
+          "name": "3. List Accounts",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "Expected response format"
+              }
+            ],
+            "url": "{{baseUrl}}/api/{{apiVersion}}/tenants/{{tenantId}}/accounts"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const accounts = pm.response.json();",
+                  "const provider = pm.environment.get('defaultProvider') || 'aws';",
+                  "const match = accounts.find(a => a.provider === provider) || accounts[0];",
+                  "pm.test('Has accounts', () => pm.expect(match).to.exist);",
+                  "pm.environment.set('accountId', match.id);"
+                ]
+              }
+            }
+          ],
+          "response": [],
+          "auth": {
+            "type": "inherit"
+          }
+        },
+        {
+          "name": "4. List Queries",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "Expected response format"
+              }
+            ],
+            "url": "{{baseUrl}}/api/{{apiVersion}}/queries?provider={{defaultProvider}}&active=true"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const queries = pm.response.json();",
+                  "const provider = pm.environment.get('defaultProvider') || 'aws';",
+                  "const match = queries.find(q => q.provider === provider) || queries[0];",
+                  "pm.test('Has queries', () => pm.expect(match).to.exist);",
+                  "pm.environment.set('queryId', match.id);"
+                ]
+              }
+            }
+          ],
+          "response": [],
+          "auth": {
+            "type": "inherit"
+          }
+        },
+        {
+          "name": "5. Create Execution",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "Expected response format"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "description": "JSON request body"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"account_id\": \"{{accountId}}\",\n  \"query_id\": \"{{queryId}}\",\n  \"triggered_by\": \"postman-smoke\"\n}"
+            },
+            "url": "{{baseUrl}}/api/{{apiVersion}}/executions"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('jobId', pm.response.json().job_id);"
+                ]
+              }
+            }
+          ],
+          "response": [],
+          "auth": {
+            "type": "inherit"
+          }
+        },
+        {
+          "name": "6. Poll Job Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "Expected response format"
+              }
+            ],
+            "url": "{{baseUrl}}/api/{{apiVersion}}/executions/{{jobId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const job = pm.response.json();",
+                  "console.log('Job status:', job.status);",
+                  "pm.test('Job is terminal or in progress', () => {",
+                  "    pm.expect(['queued', 'running', 'success', 'failed']).to.include(job.status);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [],
+          "auth": {
+            "type": "inherit"
+          }
+        },
+        {
+          "name": "7. Get Result Data (when success)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "Expected response format"
+              }
+            ],
+            "url": "{{baseUrl}}/api/{{apiVersion}}/executions/{{jobId}}/result/data"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 404) {",
+                  "    console.log('Result not ready yet \u2014 re-run step 6 then 7 after worker completes.');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": [],
+          "auth": {
+            "type": "inherit"
+          }
+        }
+      ]
+    }
+  ]
+}
