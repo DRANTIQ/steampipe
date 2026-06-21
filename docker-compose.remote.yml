@@ -8,11 +8,14 @@
 # Requires .env with remote DATABASE_URL, REDIS_URL, AWS creds, and optionally:
 #   USE_LOCAL_STORAGE=true
 #   LOCAL_STORAGE_PATH=./local/snapshots
+#
+# No platform: pin — Docker uses the host CPU (amd64 on Intel Windows, arm64 on Apple Silicon).
+# Forcing linux/arm64 on amd64 hosts breaks Steampipe/AWS plugin binaries under emulation.
+# After changing arch: docker compose -f docker-compose.remote.yml build --no-cache worker
 
 services:
   api:
     build: .
-    platform: linux/arm64
     env_file: .env
     ports:
       - "8000:8000"
@@ -23,12 +26,12 @@ services:
 
   worker:
     build: .
-    platform: linux/arm64
     env_file: .env
     environment:
       STEAMPIPE_CONFIG_DIR: /app/steampipe
       STEAMPIPE_PATH: /usr/local/bin/steampipe
       HOME: /app
+      AWS_EC2_METADATA_DISABLED: "true"
     volumes:
       - ./local/snapshots:/app/local/snapshots
     command: ["python", "-c", "from src.workers.execution_worker import run_worker_loop; run_worker_loop()"]
@@ -36,7 +39,6 @@ services:
 
   scheduler:
     build: .
-    platform: linux/arm64
     env_file: .env
     command: ["python", "-c", "from src.scheduler.cron_scheduler import run_scheduler; run_scheduler()"]
     restart: unless-stopped

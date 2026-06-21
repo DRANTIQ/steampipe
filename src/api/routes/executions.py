@@ -8,17 +8,25 @@ from src.api.deps import DbSession
 from src.api.schemas import (
     ExecutionCreate,
     ExecutionBulkCreate,
+    ExecutionScanCreate,
     ExecutionTriggerTenantCreate,
     ExecutionTriggerTenantResponse,
     ExecutionBatchProgressResponse,
     ExecutionResponse,
     ExecutionBulkResponse,
+    ExecutionScanResponse,
     ExecutionJobDetail,
     ExecutionResultResponse,
 )
 from src.config import get_settings
 from src.models import ExecutionBatch, ExecutionJob, ExecutionResult, Tenant, CloudAccount, Query
 from src.models.enums import ExecutionJobStatus
+from src.services.execution_batch_service import (
+    create_execution_batch,
+    enqueue_jobs_for_account,
+    enqueue_jobs_chunked,
+)
+from src.services.query_catalog import filter_queries
 from src.services.queue import QueueService
 from src.services.snapshot import SnapshotService
 
@@ -47,21 +55,37 @@ def _check_tenant_limits(session: DbSession, tenant_id: str) -> Tenant:
     return tenant
 
 
-@router.post("", response_model=ExecutionResponse)
-def create_execution(session: DbSession, body: ExecutionCreate) -> ExecutionResponse:
-    _check_tenant_limits(session, body.tenant_id)
-    # batch_id left null for single execution
+def _get_account_for_tenant(session: DbSession, tenant_id: str, account_id: str) -> CloudAccount:
     account = (
         session.query(CloudAccount)
         .filter(
-            CloudAccount.id == body.account_id,
-            CloudAccount.tenant_id == body.tenant_id,
+            CloudAccount.id == account_id,
+            CloudAccount.tenant_id == tenant_id,
             CloudAccount.deleted_at.is_(None),
         )
         .first()
     )
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
+    return account
+
+
+def _check_daily_limit(session: DbSession, tenant: Tenant, additional_jobs: int) -> None:
+    today_count = _count_tenant_jobs_today(session, tenant.id)
+    if today_count + additional_jobs > tenant.max_executions_per_day:
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"Tenant daily execution limit exceeded "
+                f"(max {tenant.max_executions_per_day}, today {today_count}, would add {additional_jobs})"
+            ),
+        )
+
+
+@router.post("", response_model=ExecutionResponse)
+def create_execution(session: DbSession, body: ExecutionCreate) -> ExecutionResponse:
+    _check_tenant_limits(session, body.tenant_id)
+    _get_account_for_tenant(session, body.tenant_id, body.account_id)
     query = session.query(Query).filter(Query.id == body.query_id, Query.deleted_at.is_(None)).first()
     if not query:
         raise HTTPException(status_code=404, detail="Query not found")
@@ -91,22 +115,13 @@ def create_execution(session: DbSession, body: ExecutionCreate) -> ExecutionResp
 
 @router.post("/bulk", response_model=ExecutionBulkResponse)
 def create_executions_bulk(session: DbSession, body: ExecutionBulkCreate) -> ExecutionBulkResponse:
-    """Create one execution job per query for the same account. All jobs are queued; worker processes each independently."""
+    """Create one execution job per query for the same account. All jobs share one batch."""
     if not body.query_ids:
         raise HTTPException(status_code=400, detail="query_ids must not be empty")
-    _check_tenant_limits(session, body.tenant_id)
-    account = (
-        session.query(CloudAccount)
-        .filter(
-            CloudAccount.id == body.account_id,
-            CloudAccount.tenant_id == body.tenant_id,
-            CloudAccount.deleted_at.is_(None),
-        )
-        .first()
-    )
-    if not account:
-        raise HTTPException(status_code=404, detail="Account not found")
-    # Resolve all query ids
+    tenant = _check_tenant_limits(session, body.tenant_id)
+    account = _get_account_for_tenant(session, body.tenant_id, body.account_id)
+    _check_daily_limit(session, tenant, len(body.query_ids))
+
     queries = session.query(Query).filter(
         Query.id.in_(body.query_ids),
         Query.deleted_at.is_(None),
@@ -115,27 +130,85 @@ def create_executions_bulk(session: DbSession, body: ExecutionBulkCreate) -> Exe
     missing = set(body.query_ids) - found_ids
     if missing:
         raise HTTPException(status_code=404, detail=f"Queries not found: {sorted(missing)}")
+
+    batch = create_execution_batch(
+        session,
+        body.tenant_id,
+        total_jobs=len(queries),
+        trigger_type="bulk",
+    )
     queue = QueueService()
-    job_ids: list[str] = []
-    for query in queries:
-        job_id = str(uuid4())
-        job = ExecutionJob(
-            id=job_id,
-            tenant_id=body.tenant_id,
-            account_id=body.account_id,
-            query_id=query.id,
-            priority=body.priority,
-            status=ExecutionJobStatus.queued.value,
-            triggered_by=body.triggered_by or "bulk",
-        )
-        session.add(job)
-        session.flush()
-        queue.push(job_id, {"tenant_id": body.tenant_id, "account_id": body.account_id, "query_id": query.id})
-        job_ids.append(job_id)
+    job_ids = enqueue_jobs_for_account(
+        session,
+        queue,
+        tenant_id=body.tenant_id,
+        account_id=body.account_id,
+        queries=queries,
+        batch_id=batch.id,
+        priority=body.priority,
+        triggered_by=body.triggered_by or "bulk",
+    )
+    session.commit()
     return ExecutionBulkResponse(
+        batch_id=batch.id,
         job_ids=job_ids,
+        total_jobs=len(job_ids),
         status=ExecutionJobStatus.queued.value,
-        created_at=datetime.now(timezone.utc),
+        created_at=batch.created_at,
+    )
+
+
+@router.post("/scan", response_model=ExecutionScanResponse)
+def create_execution_scan(session: DbSession, body: ExecutionScanCreate) -> ExecutionScanResponse:
+    """
+    Run all catalog queries matching category/framework for one cloud account.
+    Use for full CIS scans: framework_id=cis_aws_v6, category=compliance.
+    """
+    tenant = _check_tenant_limits(session, body.tenant_id)
+    account = _get_account_for_tenant(session, body.tenant_id, body.account_id)
+
+    all_queries = session.query(Query).filter(Query.deleted_at.is_(None)).all()
+    queries = filter_queries(
+        all_queries,
+        provider=account.provider,
+        category=body.category,
+        framework_id=body.framework_id,
+        exclude_legacy=True,
+    )
+    if not queries:
+        detail = f"No active queries for provider={account.provider}, category={body.category}"
+        if body.framework_id:
+            detail += f", framework_id={body.framework_id}"
+        raise HTTPException(status_code=404, detail=detail)
+
+    _check_daily_limit(session, tenant, len(queries))
+
+    batch = create_execution_batch(
+        session,
+        body.tenant_id,
+        total_jobs=len(queries),
+        trigger_type="scan",
+    )
+    queue = QueueService()
+    job_ids = enqueue_jobs_for_account(
+        session,
+        queue,
+        tenant_id=body.tenant_id,
+        account_id=body.account_id,
+        queries=queries,
+        batch_id=batch.id,
+        priority=body.priority,
+        triggered_by=body.triggered_by or "scan",
+    )
+    session.commit()
+    return ExecutionScanResponse(
+        batch_id=batch.id,
+        job_ids=job_ids,
+        total_jobs=len(job_ids),
+        framework_id=body.framework_id,
+        category=body.category,
+        status=ExecutionJobStatus.queued.value,
+        created_at=batch.created_at,
     )
 
 
@@ -157,11 +230,11 @@ def trigger_tenant(session: DbSession, body: ExecutionTriggerTenantCreate) -> Ex
         .filter(Query.active == True, Query.deleted_at.is_(None))
         .all()
     )
-    pairs: list[tuple[CloudAccount, Query]] = []
+    pairs: list[tuple[str, Query]] = []
     for account in accounts:
         for query in queries:
             if account.provider == query.provider:
-                pairs.append((account, query))
+                pairs.append((account.id, query))
     total_jobs = len(pairs)
     if total_jobs == 0:
         return ExecutionTriggerTenantResponse(
@@ -173,44 +246,26 @@ def trigger_tenant(session: DbSession, body: ExecutionTriggerTenantCreate) -> Ex
             status="queued",
             created_at=datetime.now(timezone.utc),
         )
-    today_count = _count_tenant_jobs_today(session, body.tenant_id)
-    if today_count + total_jobs > tenant.max_executions_per_day:
-        raise HTTPException(
-            status_code=429,
-            detail=f"Tenant daily execution limit exceeded (max {tenant.max_executions_per_day}, today {today_count}, would add {total_jobs})",
-        )
-    batch = ExecutionBatch(
-        tenant_id=body.tenant_id,
-        schedule_id=None,
-        scheduled_at=None,
-        trigger_type="manual",
+    _check_daily_limit(session, tenant, total_jobs)
+
+    batch = create_execution_batch(
+        session,
+        body.tenant_id,
         total_jobs=total_jobs,
-        status="running",
+        trigger_type="trigger-tenant",
     )
-    session.add(batch)
-    session.flush()
     queue = QueueService()
-    created = 0
     chunk_size = get_settings().BULK_QUERY_IDS_MAX
-    for i in range(0, total_jobs, chunk_size):
-        chunk = pairs[i : i + chunk_size]
-        for account, query in chunk:
-            job_id = str(uuid4())
-            job = ExecutionJob(
-                id=job_id,
-                tenant_id=body.tenant_id,
-                account_id=account.id,
-                query_id=query.id,
-                priority=body.priority,
-                status=ExecutionJobStatus.queued.value,
-                triggered_by=body.triggered_by or "trigger-tenant",
-                batch_id=batch.id,
-            )
-            session.add(job)
-            session.flush()
-            queue.push(job_id, {"tenant_id": body.tenant_id, "account_id": account.id, "query_id": query.id})
-            created += 1
-        session.commit()
+    created = enqueue_jobs_chunked(
+        session,
+        queue,
+        tenant_id=body.tenant_id,
+        pairs=pairs,
+        batch_id=batch.id,
+        priority=body.priority,
+        triggered_by=body.triggered_by or "trigger-tenant",
+        chunk_size=chunk_size,
+    )
     return ExecutionTriggerTenantResponse(
         batch_id=batch.id,
         total_jobs=total_jobs,
@@ -229,7 +284,7 @@ def trigger_tenant(session: DbSession, body: ExecutionTriggerTenantCreate) -> Ex
     operation_id="get_execution_batch_progress",
 )
 def get_batch_progress(session: DbSession, batch_id: str) -> ExecutionBatch:
-    """Get batch progress: total_jobs, completed_jobs, failed_jobs, status. Use the batch_id returned by POST /executions/trigger-tenant."""
+    """Get batch progress: total_jobs, completed_jobs, failed_jobs, status."""
     batch = session.query(ExecutionBatch).filter(ExecutionBatch.id == batch_id).first()
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
@@ -241,6 +296,7 @@ def list_executions(
     session: DbSession,
     tenant_id: str | None = Q(None),
     status: str | None = Q(None),
+    batch_id: str | None = Q(None),
     skip: int = Q(0, ge=0),
     limit: int = Q(20, ge=1, le=100),
 ) -> list[ExecutionJob]:
@@ -249,6 +305,8 @@ def list_executions(
         q = q.filter(ExecutionJob.tenant_id == tenant_id)
     if status:
         q = q.filter(ExecutionJob.status == status)
+    if batch_id:
+        q = q.filter(ExecutionJob.batch_id == batch_id)
     return q.order_by(ExecutionJob.created_at.desc()).offset(skip).limit(limit).all()
 
 

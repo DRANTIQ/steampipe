@@ -128,6 +128,19 @@ class ExecutionBulkCreate(BaseModel):
     triggered_by: str | None = None
 
 
+class ExecutionScanCreate(BaseModel):
+    """Run all matching catalog queries for one account (e.g. full CIS framework scan)."""
+    tenant_id: str
+    account_id: str
+    framework_id: str | None = Field(
+        None,
+        description="Catalog key, e.g. cis_aws_v6. Omit to run all queries matching category.",
+    )
+    category: str = Field("compliance", description="Filter queries by extra_metadata.category")
+    priority: int = 0
+    triggered_by: str | None = None
+
+
 class ExecutionResponse(BaseModel):
     job_id: str
     status: str
@@ -135,7 +148,19 @@ class ExecutionResponse(BaseModel):
 
 
 class ExecutionBulkResponse(BaseModel):
+    batch_id: str
     job_ids: list[str]
+    total_jobs: int
+    status: str
+    created_at: datetime
+
+
+class ExecutionScanResponse(BaseModel):
+    batch_id: str
+    job_ids: list[str]
+    total_jobs: int
+    framework_id: str | None
+    category: str
     status: str
     created_at: datetime
 

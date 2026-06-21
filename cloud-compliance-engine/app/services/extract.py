@@ -62,6 +62,10 @@ def extract_snapshot_to_db(
     if rows is None:
         rows = []
 
+    snapshot_meta = content.get("metadata") if isinstance(content.get("metadata"), dict) else {}
+    if not execution_job_id and snapshot_meta.get("execution_job_id"):
+        execution_job_id = str(snapshot_meta["execution_job_id"])
+
     tid = UUID(str(tenant_id)) if isinstance(tenant_id, str) else tenant_id
     aid = UUID(str(account_id)) if isinstance(account_id, str) else account_id
     now = snapshot_time or datetime.now(timezone.utc)

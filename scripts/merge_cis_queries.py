@@ -8,6 +8,11 @@ QUERIES_JSON = PROJECT_ROOT / "data" / "queries.json"
 CIS_QUERIES_JSON = PROJECT_ROOT / "cloud-compliance-engine" / "queries" / "cis_v6_queries.json"
 
 
+def _natural_key(required_columns: list[str]) -> str:
+    from src.services.snapshot_document import infer_natural_key
+    return infer_natural_key(required_columns)
+
+
 def cis_to_steampipe_format(cis_query: dict) -> dict:
     """Transform CIS query format to steampipe data/queries.json format."""
     return {
@@ -23,10 +28,12 @@ def cis_to_steampipe_format(cis_query: dict) -> dict:
         "extra_metadata": {
             "category": "compliance",
             "framework": "CIS AWS Foundations Benchmark v6.0.0",
+            "framework_id": "cis_aws_v6",
             "control_id": cis_query["control_id"],
             "control_ref": cis_query["control_ref"],
             "required_columns": cis_query["required_columns"],
             "pass_rule": cis_query["pass_rule"],
+            "natural_key": _natural_key(cis_query["required_columns"]),
         },
     }
 

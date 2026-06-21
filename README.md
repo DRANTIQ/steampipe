@@ -49,6 +49,7 @@ Multi-tenant platform for running **Steampipe** SQL and benchmark queries across
 
 ## Docs
 
+- **compliance-frameworks/** – CIS benchmark PDFs (AWS/Azure), SOC/ISO/NIST acquisition guides, `catalog.yaml`
 - **docs/STAGE1_FULL_GUIDE.md** – Stage 1 full guide: file structure, all APIs, data flow, how to run
 - **docs/RUN_WITH_REMOTE_DB.md** – Run with Supabase + Upstash (no local Postgres/Redis)
 - **LOCAL_DEVELOPMENT.md** – Migrations, dummy data, local run

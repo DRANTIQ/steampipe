@@ -31,7 +31,7 @@ _DEBUG_SENSITIVE_KEYS = frozenset(
 
 _macos_cert_hint_logged = False
 
-from src.models import ExecutionBatch, ExecutionJob, ExecutionResult, CloudAccount, Query
+from src.models import ExecutionBatch, ExecutionJob, ExecutionResult, CloudAccount, Query, Tenant
 from src.models.enums import ExecutionJobStatus, ExecutionResultStatus
 from src.services.database import get_db_session_factory
 from src.services.queue import QueueService
@@ -88,6 +88,41 @@ def _sanitize_for_log(obj: dict) -> dict:
         key_lower = k.lower() if isinstance(k, str) else ""
         out[k] = "***" if key_lower in _DEBUG_SENSITIVE_KEYS or "secret" in key_lower or "token" in key_lower else v
     return out
+
+
+def _apply_aws_plugin_env(env: dict[str, str]) -> None:
+    """Env vars that help the AWS plugin in Docker (no EC2 IMDS, fail fast on SDK retries)."""
+    env.setdefault("AWS_EC2_METADATA_DISABLED", "true")
+    env.setdefault("AWS_MAX_ATTEMPTS", "1")
+
+
+def _log_steampipe_connection_state(
+    steampipe_path: str,
+    env: dict[str, str],
+    connection_name: str | None,
+) -> None:
+    """Log steampipe_connection rows when a query fails (surfaces plugin init errors)."""
+    if connection_name:
+        safe_name = connection_name.replace("'", "''")
+        sql = f"select name, state, error from steampipe_connection where name = '{safe_name}'"
+    else:
+        sql = "select name, state, error from steampipe_connection"
+    try:
+        result = subprocess.run(
+            [steampipe_path, "query", "--output=json", sql],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env=env,
+        )
+        out = (result.stdout or "").strip()
+        err = (result.stderr or "").strip()
+        if out:
+            logger.error("Steampipe connection diagnostics: %s", out[:4000])
+        if err and not out:
+            logger.error("Steampipe connection diagnostics stderr: %s", err[:2000])
+    except Exception as e:
+        logger.debug("Could not query steampipe_connection: %s", e)
 
 
 def _write_aws_credentials_file(config_dir: Path) -> bool:
@@ -432,8 +467,7 @@ def _run_steampipe_query(
             logger.debug("Using AWS creds from extra_env (e.g. assumed-role) in service env")
         else:
             logger.debug("No AWS creds in env; service will rely on credential files only")
-        # No retries: get real error fast instead of 9 SDK retries (AWS_MAX_ATTEMPTS=1).
-        env["AWS_MAX_ATTEMPTS"] = "1"
+        _apply_aws_plugin_env(env)
         # Forward proxy env so Steampipe/plugin see same network as container (like reference Docker setup).
         for proxy_var in ("HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy"):
             if proxy_var in os.environ and proxy_var not in env:
@@ -583,6 +617,7 @@ def _run_steampipe_query(
                             combined = f"{combined}\n\n--- service stderr ---\n{service_err}"
                 except Exception:
                     pass
+            _log_steampipe_connection_state(steampipe_path, env, connection_name)
             err_lower = combined.lower()
             if "request send failed" in err_lower or ("getcalleridentity" in err_lower and "statuscode: 0" in err_lower):
                 hint = (
@@ -716,6 +751,7 @@ def process_job(session: Session, job_id: str, payload: dict) -> None:
 
     account = session.query(CloudAccount).filter(CloudAccount.id == job.account_id).first()
     query = session.query(Query).filter(Query.id == job.query_id).first()
+    tenant = session.query(Tenant).filter(Tenant.id == job.tenant_id).first()
     if not account or not query:
         logger.warning("Job %s: account or query not found, marking failed", job_id)
         job.status = ExecutionJobStatus.failed.value
@@ -853,15 +889,31 @@ def process_job(session: Session, job_id: str, payload: dict) -> None:
             snapshot_path = None
         else:
             result_status = ExecutionResultStatus.success.value
+            raw_output = output if isinstance(output, dict) else {"rows": output}
+            from src.services.snapshot_document import build_snapshot_document
+
+            meta = query.extra_metadata if isinstance(query.extra_metadata, dict) else {}
+            snapshot_payload = build_snapshot_document(
+                steampipe_output=raw_output,
+                execution_job_id=job_id,
+                query_id=job.query_id,
+                query_name=query.name,
+                tenant_id=job.tenant_id,
+                account_id=job.account_id,
+                provider=account.provider,
+                batch_id=job.batch_id,
+                extra_metadata=meta,
+            )
             snapshot_path = snapshot_service.persist_snapshot(
                 tenant_id=job.tenant_id,
+                tenant_name=tenant.name if tenant else None,
                 execution_id=job_id,
                 query_id=job.query_id,
                 account_id=job.account_id,
                 provider=account.provider,
                 account_identifier=account.account_id,
                 region=account.region,
-                data=output if isinstance(output, dict) else {"rows": output},
+                data=snapshot_payload,
             )
         job.finished_at = datetime.now(timezone.utc)
         success = not error_message
@@ -880,6 +932,24 @@ def process_job(session: Session, job_id: str, payload: dict) -> None:
                 _update_batch_on_job_finish(session, job.batch_id, True)
             session.commit()
             logger.info("Job %s success (rows=%s, duration=%.2fs)", job_id, row_count, duration_seconds)
+            meta = query.extra_metadata if isinstance(query.extra_metadata, dict) else {}
+            try:
+                QueueService().publish_job_completed(
+                    {
+                        "execution_job_id": job_id,
+                        "snapshot_path": snapshot_path,
+                        "tenant_id": job.tenant_id,
+                        "account_id": job.account_id,
+                        "query_id": job.query_id,
+                        "batch_id": job.batch_id,
+                        "control_ref": meta.get("control_ref"),
+                        "framework_id": meta.get("framework_id"),
+                        "category": meta.get("category"),
+                        "row_count": row_count,
+                    }
+                )
+            except Exception as pub_err:
+                logger.warning("Job %s: failed to publish job_completed event: %s", job_id, pub_err)
         else:
             if job.retry_count < job.max_retries:
                 job.status = ExecutionJobStatus.queued.value

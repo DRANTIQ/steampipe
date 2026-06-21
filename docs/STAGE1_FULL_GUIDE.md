@@ -424,13 +424,15 @@ Supports Upstash (`rediss://`) and local Redis (`redis://localhost:6379/0`).
 **Local** (`USE_LOCAL_STORAGE=true`):
 
 ```
-./local/snapshots/tenant_id={uuid}/provider=aws/account_id={uuid}/year=YYYY/month=MM/day=DD/execution_id={uuid}/result.json
+./local/snapshots/{tenant_slug}/{provider}/{cloud_account_number}/{year}/{month}/{day}/{execution_id}/result.json
 ```
+
+Example: `./local/snapshots/acme-corp/aws/387957186076/2026/06/20/bdb6af1d-.../result.json`
 
 **S3** (`USE_LOCAL_STORAGE=false`):
 
 ```
-s3://{S3_BUCKET}/tenant_id=.../provider=.../account_id=.../year=.../month=.../day=.../execution_id=.../result.json
+s3://{S3_BUCKET}/{tenant_slug}/{provider}/{cloud_account_number}/{year}/{month}/{day}/{execution_id}/result.json
 ```
 
 API reads snapshots via `GET /executions/{job_id}/result/data` using `SnapshotService.get_snapshot_content()`.
@@ -643,4 +645,5 @@ POST /executions → Redis → Worker → Steampipe → AWS → Snapshot + Postg
 | [CODE_STATUS_AND_FEATURES_TO_ADD.md](CODE_STATUS_AND_FEATURES_TO_ADD.md) | Feature checklist |
 | [FRESH_DB_SETUP.md](../FRESH_DB_SETUP.md) | Reset local DB |
 | [RUN_WITH_REMOTE_DB.md](RUN_WITH_REMOTE_DB.md) | Supabase + Upstash, no local Postgres/Redis |
+| [SCALING_ROADMAP.md](SCALING_ROADMAP.md) | Phases 0–4: scale workers, warm Steampipe, bulk sessions |
 | [cloud-compliance-engine/README.md](../cloud-compliance-engine/README.md) | Stage 2 |

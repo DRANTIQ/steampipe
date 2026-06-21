@@ -10,6 +10,7 @@ from redis.exceptions import ConnectionError, RedisError
 from src.config import get_settings
 
 QUEUE_KEY = "steampipe:execution_jobs"
+JOB_COMPLETED_KEY = "steampipe:job_completed"
 
 
 class QueueService:
@@ -78,3 +79,10 @@ class QueueService:
 
     def queue_depth(self) -> int:
         return self._with_retry(lambda: self._get_client().llen(QUEUE_KEY), max_retries=2) or 0
+
+    def publish_job_completed(self, payload: dict[str, Any]) -> None:
+        """Notify downstream consumers (e.g. compliance extract) that a job finished successfully."""
+        self._with_retry(
+            lambda: self._get_client().rpush(JOB_COMPLETED_KEY, json.dumps(payload)),
+            max_retries=2,
+        )

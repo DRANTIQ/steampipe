@@ -123,7 +123,7 @@ Copy from `env.example` and set remote URLs.
 3. Copy the URI — it looks like:
 
 ```env
-DATABASE_URL=postgresql://postgres.aaefijszafaaxcfbuhba:YOUR_PASSWORD@aws-0-REGION.pooler.supabase.com:5432/postgres?sslmode=require
+DATABASE_URL=
 ```
 
 Note: pooler user is `postgres.<project-ref>`, not just `postgres`.
@@ -284,7 +284,7 @@ curl http://localhost:8000/api/v1/executions/JOB_ID/result/data
 Snapshot file (if `USE_LOCAL_STORAGE=true`) appears under:
 
 ```
-./local/snapshots/tenant_id=.../provider=aws/.../result.json
+./local/snapshots/acme-corp/aws/387957186076/2026/06/20/.../result.json
 ```
 
 ---

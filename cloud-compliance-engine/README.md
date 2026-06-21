@@ -11,7 +11,7 @@ Resources (S3) → Extract → execution_snapshot_rows → Rules → control_res
 - **Enterprise checklist:** **[docs/ENTERPRISE_ARCHITECTURE.md](docs/ENTERPRISE_ARCHITECTURE.md)** — evaluation_runs, RLS, soft delete, hash chain, multi-cloud, partition strategy, SLA, control_metrics, observability.
 - **Full architecture diagram:** **[docs/ARCHITECTURE_DIAGRAM.md](docs/ARCHITECTURE_DIAGRAM.md)** — Phase 1 → Phase 2, evaluation_runs lifecycle, all tables, rule engine, evidence, drift, API.
 - **Design overview:** **[DESIGN.md](DESIGN.md)** — data flow, why we beat Wiz/Drata/Powerpipe.
-- **Control mapping:** `config/cis_v6_controls.yaml` — CIS v6 control_id + severity; reference `CIS_Amazon_Web_Services_Foundations_Benchmark_v6.0.0.pdf`.
+- **Control mapping:** `config/cis_v6_controls.yaml` — CIS v6 control_id + severity; reference PDFs under [`../compliance-frameworks/`](../compliance-frameworks/) (AWS Foundations v7 on disk; engine targets v6 until migrated).
 - **CIS v6 SQL queries:** `queries/cis_v6_queries.json` — Steampipe SQL for 34 automated controls; use with parent repo `data/queries.json` or apply via scripts.
 - **Architecture:** `docs/ARCHITECTURE.md` — Modular monolith: same DB/Redis/S3, separate `compliance` schema and Redis namespace.
 - **S3 → Postgres mapping:** `docs/S3_TO_POSTGRES_MAPPING.md` — Extract (S3 → compliance.execution_snapshot_rows), rule engine, compliance.control_results, compliance.compliance_summary.
