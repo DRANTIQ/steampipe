@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Enrich data/queries.json compliance entries: framework_id, natural_key, CIS v6 alignment."""
+"""Enrich data/queries.json compliance entries: framework_id, natural_key."""
 from __future__ import annotations
 
 import json
@@ -10,7 +10,6 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 QUERIES_JSON = PROJECT_ROOT / "data" / "queries.json"
-CIS_QUERIES_JSON = PROJECT_ROOT / "cloud-compliance-engine" / "queries" / "cis_v6_queries.json"
 
 FRAMEWORK_ID = "cis_aws_v6"
 FRAMEWORK_TITLE = "CIS AWS Foundations Benchmark v6.0.0"
@@ -110,12 +109,7 @@ def main() -> None:
     with open(QUERIES_JSON, encoding="utf-8") as f:
         data = json.load(f)
 
-    with open(CIS_QUERIES_JSON, encoding="utf-8") as f:
-        cis_data = json.load(f)
-
-    cis = cis_by_name(cis_data)
-    existing_names = {q["name"] for q in data["queries"]}
-
+    cis: dict[str, dict] = {}
     updated = 0
     for entry in data["queries"]:
         before = json.dumps(entry.get("extra_metadata"), sort_keys=True)
@@ -123,36 +117,6 @@ def main() -> None:
         after = json.dumps(entry.get("extra_metadata"), sort_keys=True)
         if before != after:
             updated += 1
-
-    added = 0
-    for cis_q in cis_data.get("queries", []):
-        if cis_q["name"] not in existing_names:
-            required = cis_q["required_columns"]
-            data["queries"].append(
-                {
-                    "name": cis_q["name"],
-                    "version": "1.0",
-                    "provider": "aws",
-                    "plugin": "aws",
-                    "query_text": cis_q["query_text"],
-                    "execution_mode": "single_account",
-                    "output_format": "json",
-                    "schedule_enabled": False,
-                    "active": True,
-                    "extra_metadata": {
-                        "category": "compliance",
-                        "framework": FRAMEWORK_TITLE,
-                        "framework_id": FRAMEWORK_ID,
-                        "control_id": cis_q["control_id"],
-                        "control_ref": cis_q["control_ref"],
-                        "required_columns": required,
-                        "pass_rule": cis_q.get("pass_rule", "zero_rows"),
-                        "natural_key": infer_natural_key(required),
-                    },
-                }
-            )
-            existing_names.add(cis_q["name"])
-            added += 1
 
     with open(QUERIES_JSON, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
@@ -166,7 +130,6 @@ def main() -> None:
     with_control_ref = sum(1 for q in compliance if (q.get("extra_metadata") or {}).get("control_ref"))
 
     print(f"Updated metadata on {updated} queries")
-    print(f"Added {added} missing CIS queries")
     print(f"Total queries: {len(data['queries'])}")
     print(f"Compliance queries: {len(compliance)} (framework_id: {with_framework}, control_ref: {with_control_ref})")
 

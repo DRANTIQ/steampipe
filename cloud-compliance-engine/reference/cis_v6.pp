@@ -14,7 +14,7 @@ query "cis_2_4_iam_root_mfa" {
   title       = "CIS 2.4: Ensure MFA is enabled for the root user account"
   description = "Returns rows if root has password but no MFA (FAIL). Zero rows = PASS."
   sql         = <<-EOT
-    select account_id, account_mfa_enabled, account_password_present from aws_iam_account_summary where account_mfa_enabled = 0 and account_password_present = 1
+    select account_id, account_mfa_enabled, account_password_present from aws_iam_account_summary where not account_mfa_enabled and account_password_present
   EOT
 }
 
@@ -46,7 +46,7 @@ query "cis_2_11_iam_credentials_unused" {
   title       = "CIS 2.11: Ensure credentials unused for 45 days or more are disabled"
   description = "Returns active credentials unused 45+ days (FAIL). Zero rows = PASS."
   sql         = <<-EOT
-    select access_key_id, user_name, status, create_date, last_used from aws_iam_access_key where status = 'Active' and (last_used is null or last_used < (now() - interval '45 days'))
+    select access_key_id, user_name, status, create_date, access_key_last_used_date from aws_iam_access_key where status = 'Active' and (access_key_last_used_date is null or access_key_last_used_date < (now() - interval '45 days'))
   EOT
 }
 
@@ -102,7 +102,7 @@ query "cis_2_18_iam_expired_certificates" {
   title       = "CIS 2.18: Ensure expired SSL/TLS certificates in IAM are removed"
   description = "Returns expired certificates (FAIL). Zero rows = PASS."
   sql         = <<-EOT
-    select name, certificate_id, upload_date, expiration from aws_iam_server_certificate where expiration < now()
+    select name, server_certificate_id, upload_date, expiration from aws_iam_server_certificate where expiration < now()
   EOT
 }
 
@@ -118,7 +118,7 @@ query "cis_3_1_1_s3_deny_http" {
   title       = "CIS 3.1.1: Ensure S3 Bucket Policy denies HTTP requests"
   description = "Returns buckets without SecureTransport policy (FAIL). Zero rows = PASS."
   sql         = <<-EOT
-    select name, region, account_id, bucket_policy from aws_s3_bucket where bucket_policy is null or bucket_policy::text not like '%aws:SecureTransport%' and bucket_policy::text not like '%false%'
+    select name, region, account_id from aws_s3_bucket where name not in (select name from aws_s3_bucket, jsonb_array_elements(policy_std -> 'Statement') as s, jsonb_array_elements_text(s -> 'Principal' -> 'AWS') as p, jsonb_array_elements_text(s -> 'Action') as a, jsonb_array_elements_text(s -> 'Condition' -> 'Bool' -> 'aws:securetransport') as ssl where p = '*' and s ->> 'Effect' = 'Deny' and ssl::bool = false)
   EOT
 }
 
@@ -174,7 +174,7 @@ query "cis_4_3_config_enabled" {
   title       = "CIS 4.3: Ensure AWS Config is enabled in all regions"
   description = "Returns regions with Config not recording (FAIL). Zero rows = PASS."
   sql         = <<-EOT
-    select name, region, recording from aws_config_configuration_recorder where recording = false
+    select name, region, status_recording from aws_config_configuration_recorder where not status_recording
   EOT
 }
 

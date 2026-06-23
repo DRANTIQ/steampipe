@@ -1,4 +1,4 @@
-.PHONY: up migrate seed extract_sample eval_sample test run
+.PHONY: up migrate seed extract_sample eval_sample test run setup
 
 # Run from repo root
 ROOT := $(shell git rev-parse --show-toplevel 2>/dev/null || echo "..")
@@ -23,4 +23,7 @@ test:
 	cd $(ROOT) && PYTHONPATH=cloud-compliance-engine python -m pytest cloud-compliance-engine/tests -v
 
 run:
-	cd $(ROOT) && PYTHONPATH=cloud-compliance-engine python -m uvicorn app.main:app --reload --app-dir cloud-compliance-engine --host 0.0.0.0 --port 8000
+	cd $(ROOT) && PYTHONPATH=cloud-compliance-engine python -m uvicorn app.main:app --reload --app-dir cloud-compliance-engine --host 0.0.0.0 --port 8001
+
+setup:
+	cd $(ROOT) && PYTHONPATH=cloud-compliance-engine:$(ROOT) python scripts/setup_compliance.py

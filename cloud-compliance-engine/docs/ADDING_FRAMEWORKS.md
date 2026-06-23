@@ -43,34 +43,35 @@ controls:
 
 ---
 
-## 3. Rule Definitions JSON
+## 3. Rule definitions (queries)
 
-- **Path:** e.g. `queries/cis_v6_queries.json` or `queries/cost_optimization_aws_queries.json`
-- **Structure:**
+- **Path:** `data/queries.json` at **repo root** (single source for Stage 1 SQL and Stage 2 evaluation)
+- Add entries with `extra_metadata.category: compliance` and your `framework_id`
 
 ```json
 {
-  "framework": "Human-readable name",
-  "queries": [
-    {
-      "name": "cis_2_3_iam_root_access_keys",
-      "control_id": "2.3",
-      "control_ref": "iam-root-access-keys",
-      "query_text": "select ...",
-      "required_columns": ["account_id", "account_access_keys_present"],
-      "pass_rule": "zero_rows"
-    }
-  ]
+  "name": "cis_2_3_iam_root_access_keys",
+  "query_text": "select ... from aws_...",
+  "extra_metadata": {
+    "category": "compliance",
+    "framework_id": "cis_aws_v6",
+    "control_id": "2.3",
+    "control_ref": "iam-root-access-keys",
+    "pass_rule": "zero_rows",
+    "required_columns": ["account_id"]
+  }
 }
 ```
 
-- **Rules:** `control_ref` must match the YAML’s `control_ref` for that control. `pass_rule` today is `zero_rows`; more can be added later.
+- **Rules:** `control_ref` must match the YAML’s `control_ref`. Evaluation uses `pass_rule` + `required_columns` (SQL runs in Stage 1 only).
+
+See [CATALOG.md](CATALOG.md) for the full sync workflow.
 
 ---
 
-## 4. Catalog Entry
+## 4. Catalog entry
 
-Edit **`config/catalog.yaml`** and add one block per framework:
+Edit **`config/catalog.yaml`**:
 
 ```yaml
 frameworks:
@@ -78,34 +79,12 @@ frameworks:
     provider: aws
     category: compliance
     controls_path: config/cis_v6_controls.yaml
-    rules_path: queries/cis_v6_queries.json
+    rules_source: data/queries.json
     framework_title: "CIS AWS Foundations Benchmark v6.0.0"
     version_name: "6.0.0"
-
-  # New framework example: cost optimization
-  - framework_id: cost_optimization_aws
-    provider: aws
-    category: cost_optimization
-    controls_path: config/cost_optimization_aws_controls.yaml
-    rules_path: queries/cost_optimization_aws_queries.json
-    framework_title: "AWS Cost Optimization Checks"
-    version_name: "1.0.0"
-
-  # New provider example: Azure
-  - framework_id: cis_azure_v1
-    provider: azure
-    category: compliance
-    controls_path: config/cis_azure_v1_controls.yaml
-    rules_path: queries/cis_azure_v1_queries.json
-    framework_title: "CIS Microsoft Azure Foundations Benchmark v1.x"
-    version_name: "1.0.0"
 ```
 
-- **framework_id:** Unique key (e.g. `cis_aws_v6`, `cost_optimization_aws`, `cis_azure_v1`).
-- **provider:** `aws` | `azure` | `gcp` (for filtering and future use).
-- **category:** `compliance` | `cost_optimization` | `security` | etc. (for filtering and grouping).
-- **controls_path / rules_path:** Relative to `cloud-compliance-engine/`.
-- **framework_title / version_name:** Stored in DB and used in APIs.
+- **rules_source:** Path relative to **repo root** (not `cloud-compliance-engine/`)
 
 ---
 
@@ -114,8 +93,14 @@ frameworks:
 After adding or changing YAML, JSON, or the catalog:
 
 ```bash
-# From repo root
+python scripts/setup_compliance.py
+```
+
+Or manually:
+
+```bash
 alembic upgrade head
+python scripts/apply_queries_document.py
 PYTHONPATH=cloud-compliance-engine python -m app.scripts.seed_catalog
 ```
 
@@ -132,14 +117,14 @@ PYTHONPATH=cloud-compliance-engine python -m app.scripts.seed_catalog
 1. **Add control definitions**  
    Create or edit a YAML under `config/` with `framework`, `framework_version`, and `controls` (each with `control_id`, `title`, `severity`, `control_ref` if automated).
 
-2. **Add rule definitions**  
-   Create or edit a JSON under `queries/` with `queries[]` (each with `name`, `control_id`, `control_ref`, `required_columns`, `pass_rule`).
+2. **Add queries**  
+   Add compliance entries to `data/queries.json` with matching `control_ref` and `framework_id`.
 
 3. **Register in catalog**  
-   Add one entry under `frameworks` in `config/catalog.yaml` with `framework_id`, `provider`, `category`, `controls_path`, `rules_path`, `framework_title`, `version_name`.
+   Add one entry under `frameworks` in `config/catalog.yaml` with `rules_source: data/queries.json`.
 
-4. **Run seed**  
-   Run `alembic upgrade head` (if needed) and `PYTHONPATH=cloud-compliance-engine python -m app.scripts.seed_catalog`.
+4. **Run setup**  
+   `python scripts/setup_compliance.py`
 
 5. **Use in API**  
    `GET /v1/controls?framework_id=...&provider=...&category=...` will return the new controls. Evaluation uses the same engine; point runs at the new `framework_id` and snapshot data that matches the new rules.

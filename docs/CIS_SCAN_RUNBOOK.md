@@ -58,8 +58,34 @@ curl "http://localhost:8000/api/v1/executions?batch_id=BATCH_ID&limit=100"
 ## Scale workers (recommended)
 
 ```bash
-docker compose -f docker-compose.remote.yml up --scale worker=2
+docker compose -f docker-compose.remote.yml up --scale worker=4
 ```
+
+With `STEAMPIPE_ACCOUNT_SESSION_ENABLED=true` (default), each CIS scan enqueues **one Redis message per account batch** (not 35). One worker claims all jobs, runs one AssumeRole + one Steampipe init, then all controls sequentially. Other workers stay free for other accounts/batches.
+
+Worker logs:
+
+```text
+Processing account session (batch=..., account=..., jobs=35)
+Account session: batch=... claimed 35 jobs (one Steampipe init)
+Reusing warm Steampipe service
+```
+
+Apply query catalog changes to the remote DB (mount workspace so Docker sees your files):
+
+```bash
+python scripts/enrich_compliance_queries.py
+docker compose -f docker-compose.remote.yml run --rm -v "${PWD}:/app" api python scripts/apply_queries_document.py
+```
+
+Rebuild after worker/API changes:
+
+```bash
+docker compose -f docker-compose.remote.yml build api worker
+docker compose -f docker-compose.remote.yml up -d --scale worker=4
+```
+
+Tune init wait after stable runs: `STEAMPIPE_CONNECTION_INIT_WAIT_SECONDS=30`.
 
 ## Job completed events
 

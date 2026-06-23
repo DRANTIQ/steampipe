@@ -23,6 +23,7 @@ from src.models import ExecutionBatch, ExecutionJob, ExecutionResult, Tenant, Cl
 from src.models.enums import ExecutionJobStatus
 from src.services.execution_batch_service import (
     create_execution_batch,
+    dispatch_batch_account_queue,
     enqueue_jobs_for_account,
     enqueue_jobs_chunked,
 )
@@ -140,7 +141,6 @@ def create_executions_bulk(session: DbSession, body: ExecutionBulkCreate) -> Exe
     queue = QueueService()
     job_ids = enqueue_jobs_for_account(
         session,
-        queue,
         tenant_id=body.tenant_id,
         account_id=body.account_id,
         queries=queries,
@@ -149,6 +149,13 @@ def create_executions_bulk(session: DbSession, body: ExecutionBulkCreate) -> Exe
         triggered_by=body.triggered_by or "bulk",
     )
     session.commit()
+    dispatch_batch_account_queue(
+        queue,
+        tenant_id=body.tenant_id,
+        account_id=body.account_id,
+        batch_id=batch.id,
+        job_ids=job_ids,
+    )
     return ExecutionBulkResponse(
         batch_id=batch.id,
         job_ids=job_ids,
@@ -192,7 +199,6 @@ def create_execution_scan(session: DbSession, body: ExecutionScanCreate) -> Exec
     queue = QueueService()
     job_ids = enqueue_jobs_for_account(
         session,
-        queue,
         tenant_id=body.tenant_id,
         account_id=body.account_id,
         queries=queries,
@@ -201,6 +207,13 @@ def create_execution_scan(session: DbSession, body: ExecutionScanCreate) -> Exec
         triggered_by=body.triggered_by or "scan",
     )
     session.commit()
+    dispatch_batch_account_queue(
+        queue,
+        tenant_id=body.tenant_id,
+        account_id=body.account_id,
+        batch_id=batch.id,
+        job_ids=job_ids,
+    )
     return ExecutionScanResponse(
         batch_id=batch.id,
         job_ids=job_ids,

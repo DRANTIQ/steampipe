@@ -1,7 +1,7 @@
 # CIS AWS Foundations Benchmark v6.0.0 — Control Definitions
 # Source: CIS_Amazon_Web_Services_Foundations_Benchmark_v6.0.0.pdf
 # Reference: docs/CIS_V6_REFERENCE.md
-# SQL queries: queries/cis_v6_queries.json (Steampipe AWS plugin)
+# SQL queries: data/queries.json (repo root; Steampipe AWS plugin)
 #
 # Use control_ref to map Steampipe query extra_metadata.control_ref to official control_id.
 # severity: Critical=4, High=3, Medium=2, Low=1 for default_weight in compliance_summary

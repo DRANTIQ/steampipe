@@ -149,6 +149,18 @@ Each job:
 
 Only the **worker** runs Steampipe. API and scheduler enqueue jobs only.
 
+### Phase C (implemented): account session
+
+When `STEAMPIPE_ACCOUNT_SESSION_ENABLED=true` and jobs share a `batch_id` + `account_id` (e.g. CIS scan):
+
+1. API creates jobs in Postgres, commits, then pushes **one Redis message** per `(batch_id, account_id)` (`mode: account_session`)
+2. One worker acquires a Redis lock, claims all queued jobs from DB
+3. One AssumeRole + one Steampipe service start
+4. Runs all queries with warm service (`skip_service_start` / `keep_service_alive`)
+5. Other workers handle other accounts/batches in parallel; they do not split one account scan
+
+See [CIS_SCAN_RUNBOOK.md](CIS_SCAN_RUNBOOK.md).
+
 ---
 
 ## Notes for future implementers

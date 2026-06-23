@@ -13,6 +13,29 @@ class ComplianceBase(DeclarativeBase):
     pass
 
 
+class ScanRun(ComplianceBase):
+    """One compliance scan = one execution batch (customer-facing scan unit)."""
+
+    __tablename__ = "scan_runs"
+    __table_args__ = {"schema": "compliance"}
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, server_default="gen_random_uuid()")
+    tenant_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    account_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    batch_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    framework_id: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="running")
+    total_controls: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    evaluated_controls: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    pass_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    fail_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    unknown_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    score_pct: Mapped[float | None] = mapped_column(Numeric, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default="now()", nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default="now()", nullable=True)
+
+
 class Snapshot(ComplianceBase):
     __tablename__ = "snapshots"
     __table_args__ = {"schema": "compliance"}
@@ -26,6 +49,14 @@ class Snapshot(ComplianceBase):
     snapshot_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     record_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     execution_job_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    batch_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    framework_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    control_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
+    control_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    query_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    query_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    scan_run_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("compliance.scan_runs.id"), nullable=True)
+    rule_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default="now()", nullable=True)
 
 
@@ -71,6 +102,7 @@ class RuleVersion(ComplianceBase):
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default="now()", nullable=True)
     hash: Mapped[str] = mapped_column(String(64), nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    definitions: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=False, server_default="[]")
 
 
 class EvaluationRun(ComplianceBase):
@@ -88,6 +120,9 @@ class EvaluationRun(ComplianceBase):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default="now()", nullable=True)
     snapshot_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("compliance.snapshots.id"), nullable=True)
+    scan_run_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("compliance.scan_runs.id"), nullable=True)
+    framework_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    control_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
     idempotency_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     run_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
@@ -159,6 +194,7 @@ class ComplianceSummary(ComplianceBase):
     account_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
     framework_id: Mapped[str] = mapped_column(Text, nullable=False)
     evaluation_run_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("compliance.evaluation_runs.id"), nullable=True)
+    scan_run_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("compliance.scan_runs.id"), nullable=True)
     pass_count: Mapped[int] = mapped_column(Integer, nullable=False)
     fail_count: Mapped[int] = mapped_column(Integer, nullable=False)
     unknown_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")

@@ -96,6 +96,9 @@ class Settings(BaseSettings):
     STEAMPIPE_DATABASE_INSECURE: bool = False
     # Seconds to wait after service is listening before running query (plugin may retry GetCallerIdentity; 10s often too short)
     STEAMPIPE_CONNECTION_INIT_WAIT_SECONDS: int = 45
+    # Phase C: one AssumeRole + one Steampipe init per (batch_id, account_id) scan
+    STEAMPIPE_ACCOUNT_SESSION_ENABLED: bool = True
+    STEAMPIPE_SESSION_MAX_JOBS: int = 200
 
     # Worker
     MAX_CONCURRENT_EXECUTIONS: int = 3

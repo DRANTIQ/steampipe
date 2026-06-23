@@ -2,8 +2,23 @@
 from __future__ import annotations
 
 import os
+import sys
 from functools import lru_cache
+from pathlib import Path
 from typing import Optional
+
+_ENGINE_ROOT = Path(__file__).resolve().parents[1]
+_REPO_ROOT = _ENGINE_ROOT.parent
+
+
+def _load_env_files() -> None:
+    """Load repo root .env then engine .env (cwd may be cloud-compliance-engine/)."""
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    load_dotenv(_REPO_ROOT / ".env")
+    load_dotenv(_ENGINE_ROOT / ".env", override=True)
 
 
 def _normalize_postgres_url(url: str) -> str:
@@ -21,7 +36,10 @@ class ComplianceSettings:
     """Settings from env. When run from parent repo, DATABASE_URL etc. can come from parent .env."""
 
     def __init__(self) -> None:
+        _load_env_files()
         try:
+            if str(_REPO_ROOT) not in sys.path:
+                sys.path.insert(0, str(_REPO_ROOT))
             from src.config import get_settings as parent_settings
             p = parent_settings()
             self.DATABASE_URL = _normalize_postgres_url(p.DATABASE_URL)
@@ -44,7 +62,7 @@ class ComplianceSettings:
             self.AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
             self.AWS_SESSION_TOKEN = os.environ.get("AWS_SESSION_TOKEN", "")
 
-        self.COMPLIANCE_QUEUE_KEY = os.environ.get("COMPLIANCE_QUEUE_KEY", "compliance:job_completed")
+        self.COMPLIANCE_QUEUE_KEY = os.environ.get("COMPLIANCE_QUEUE_KEY", "steampipe:job_completed")
         self.DEFAULT_TENANT_ID = os.environ.get("DEFAULT_TENANT_ID", "")
         self.LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 

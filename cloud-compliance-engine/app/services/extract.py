@@ -1,4 +1,4 @@
-"""Extract snapshot JSON from S3 or local path into compliance.snapshots + execution_snapshot_rows."""
+"""Extract Bronze snapshot JSON into compliance Silver layer."""
 from __future__ import annotations
 
 import json
@@ -7,18 +7,32 @@ from pathlib import Path
 from uuid import UUID, uuid4
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.models.compliance import Snapshot, ExecutionSnapshotRow
 from app.services.hash_utils import record_hash, snapshot_hash_from_record_hashes
+from app.services.rule_engine.catalog import build_pinned_rule_metadata
 
 SOURCE_STEAMPIPE = "steampipe"
 RECORD_TYPE_STEAMPIPE_ROW = "steampipe_row"
 
 
+def _resolve_local_snapshot_path(snapshot_path: str, local_path: str) -> Path:
+    """Resolve snapshot_path from execution_results to a readable file path."""
+    rel = snapshot_path.lstrip("./")
+    base = Path(local_path).resolve()
+    if rel.startswith("local/snapshots/"):
+        repo_root = base.parent.parent
+        return repo_root / rel
+    candidate = base / rel
+    if candidate.exists():
+        return candidate
+    return Path(snapshot_path)
+
+
 def get_snapshot_content(snapshot_path: str, use_local: bool, local_path: str, s3_bucket: str) -> dict[str, Any] | None:
-    """Load JSON from snapshot_path (s3://bucket/key or local path)."""
     if not snapshot_path:
         return None
     if snapshot_path.startswith("s3://"):
@@ -32,9 +46,18 @@ def get_snapshot_content(snapshot_path: str, use_local: bool, local_path: str, s
         except Exception:
             return None
     try:
-        return json.loads(Path(snapshot_path).read_text(encoding="utf-8"))
+        path = _resolve_local_snapshot_path(snapshot_path, local_path)
+        return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return None
+
+
+def _find_existing_snapshot(db: Session, execution_job_id: str | None) -> Snapshot | None:
+    if not execution_job_id:
+        return None
+    return db.execute(
+        select(Snapshot).where(Snapshot.execution_job_id == execution_job_id)
+    ).scalar_one_or_none()
 
 
 def extract_snapshot_to_db(
@@ -44,14 +67,14 @@ def extract_snapshot_to_db(
     account_id: str | UUID,
     snapshot_time: datetime | None = None,
     execution_job_id: str | None = None,
+    scan_run_id: UUID | None = None,
+    metadata: dict[str, Any] | None = None,
     use_local: bool = False,
     local_path: str = "./local/snapshots",
     s3_bucket: str = "",
 ) -> Snapshot | None:
-    """
-    Load snapshot JSON from snapshot_path, create compliance.snapshots row and
-    compliance.execution_snapshot_rows. Returns the Snapshot model or None if load failed.
-    """
+    """Load Bronze JSON → compliance.snapshots + execution_snapshot_rows (idempotent by execution_job_id)."""
+    meta = metadata or {}
     content = get_snapshot_content(snapshot_path, use_local, local_path, s3_bucket)
     if not content:
         return None
@@ -63,12 +86,24 @@ def extract_snapshot_to_db(
         rows = []
 
     snapshot_meta = content.get("metadata") if isinstance(content.get("metadata"), dict) else {}
-    if not execution_job_id and snapshot_meta.get("execution_job_id"):
-        execution_job_id = str(snapshot_meta["execution_job_id"])
+    merged = {**snapshot_meta, **meta}
+    if not execution_job_id and merged.get("execution_job_id"):
+        execution_job_id = str(merged["execution_job_id"])
+
+    existing = _find_existing_snapshot(db, execution_job_id)
+    if existing:
+        return existing
 
     tid = UUID(str(tenant_id)) if isinstance(tenant_id, str) else tenant_id
     aid = UUID(str(account_id)) if isinstance(account_id, str) else account_id
-    now = snapshot_time or datetime.now(timezone.utc)
+    captured = merged.get("captured_at")
+    if isinstance(captured, str):
+        try:
+            now = datetime.fromisoformat(captured.replace("Z", "+00:00"))
+        except ValueError:
+            now = snapshot_time or datetime.now(timezone.utc)
+    else:
+        now = snapshot_time or datetime.now(timezone.utc)
 
     snapshot = Snapshot(
         id=uuid4(),
@@ -76,10 +111,18 @@ def extract_snapshot_to_db(
         account_id=aid,
         snapshot_time=now,
         sources=[SOURCE_STEAMPIPE],
-        s3_prefix=snapshot_path if not snapshot_path.startswith("s3://") else None,
-        snapshot_hash="",  # set after we have record_hashes
+        s3_prefix=snapshot_path,
+        snapshot_hash="",
         record_count=0,
         execution_job_id=execution_job_id,
+        batch_id=str(merged["batch_id"]) if merged.get("batch_id") else None,
+        framework_id=merged.get("framework_id"),
+        control_ref=merged.get("control_ref"),
+        control_id=merged.get("control_id"),
+        query_id=str(merged["query_id"]) if merged.get("query_id") else None,
+        query_name=merged.get("query_name"),
+        scan_run_id=scan_run_id,
+        rule_metadata=build_pinned_rule_metadata(merged) if merged.get("control_ref") else None,
     )
     db.add(snapshot)
     db.flush()
@@ -98,6 +141,8 @@ def extract_snapshot_to_db(
             record_type=RECORD_TYPE_STEAMPIPE_ROW,
             record_hash=rh,
             payload=row,
+            region=str(row.get("region")) if row.get("region") else None,
+            natural_key=merged.get("natural_key"),
         ).on_conflict_do_nothing(index_elements=["snapshot_id", "record_hash"])
         db.execute(stmt)
 

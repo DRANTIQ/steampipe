@@ -292,7 +292,7 @@
       "version": "1.0",
       "provider": "aws",
       "plugin": "aws",
-      "query_text": "select account_id, account_mfa_enabled, account_password_present from aws_iam_account_summary where account_mfa_enabled = 0 and account_password_present = 1",
+      "query_text": "select account_id, account_mfa_enabled, account_password_present from aws_iam_account_summary where not account_mfa_enabled and account_password_present",
       "execution_mode": "single_account",
       "output_format": "json",
       "schedule_enabled": false,
@@ -388,7 +388,7 @@
       "version": "1.0",
       "provider": "aws",
       "plugin": "aws",
-      "query_text": "select access_key_id, user_name, status, create_date, last_used from aws_iam_access_key where status = 'Active' and (last_used is null or last_used < (now() - interval '45 days'))",
+      "query_text": "select access_key_id, user_name, status, create_date, access_key_last_used_date from aws_iam_access_key where status = 'Active' and (access_key_last_used_date is null or access_key_last_used_date < (now() - interval '45 days'))",
       "execution_mode": "single_account",
       "output_format": "json",
       "schedule_enabled": false,
@@ -402,7 +402,7 @@
           "access_key_id",
           "user_name",
           "status",
-          "last_used"
+          "access_key_last_used_date"
         ],
         "pass_rule": "zero_rows",
         "framework_id": "cis_aws_v6",
@@ -559,7 +559,7 @@
       "version": "1.0",
       "provider": "aws",
       "plugin": "aws",
-      "query_text": "select name, certificate_id, upload_date, expiration from aws_iam_server_certificate where expiration < now()",
+      "query_text": "select name, server_certificate_id, upload_date, expiration from aws_iam_server_certificate where expiration < now()",
       "execution_mode": "single_account",
       "output_format": "json",
       "schedule_enabled": false,
@@ -571,7 +571,7 @@
         "control_ref": "iam-expired-certificates",
         "required_columns": [
           "name",
-          "certificate_id",
+          "server_certificate_id",
           "expiration"
         ],
         "pass_rule": "zero_rows",
@@ -609,7 +609,7 @@
       "version": "1.0",
       "provider": "aws",
       "plugin": "aws",
-      "query_text": "select name, region, account_id, bucket_policy from aws_s3_bucket where bucket_policy is null or bucket_policy::text not like '%aws:SecureTransport%' and bucket_policy::text not like '%false%'",
+      "query_text": "select name, region, account_id from aws_s3_bucket where name not in (select name from aws_s3_bucket, jsonb_array_elements(policy_std -> 'Statement') as s, jsonb_array_elements_text(s -> 'Principal' -> 'AWS') as p, jsonb_array_elements_text(s -> 'Action') as a, jsonb_array_elements_text(s -> 'Condition' -> 'Bool' -> 'aws:securetransport') as ssl where p = '*' and s ->> 'Effect' = 'Deny' and ssl::bool = false)",
       "execution_mode": "single_account",
       "output_format": "json",
       "schedule_enabled": false,
@@ -622,7 +622,7 @@
         "required_columns": [
           "name",
           "region",
-          "bucket_policy"
+          "account_id"
         ],
         "pass_rule": "zero_rows",
         "framework_id": "cis_aws_v6",
@@ -783,7 +783,7 @@
       "version": "1.0",
       "provider": "aws",
       "plugin": "aws",
-      "query_text": "select name, region, recording from aws_config_configuration_recorder where recording = false",
+      "query_text": "select name, region, status_recording from aws_config_configuration_recorder where not status_recording",
       "execution_mode": "single_account",
       "output_format": "json",
       "schedule_enabled": false,
@@ -796,7 +796,7 @@
         "required_columns": [
           "name",
           "region",
-          "recording"
+          "status_recording"
         ],
         "pass_rule": "zero_rows",
         "framework_id": "cis_aws_v6",

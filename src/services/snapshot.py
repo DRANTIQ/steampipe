@@ -64,12 +64,14 @@ class SnapshotService:
         region: str | None,
         data: dict[str, Any],
         tenant_name: str | None = None,
+        batch_id: str | None = None,
     ) -> str:
         """Write snapshot; return path/key for storage in ExecutionResult.snapshot_path.
 
         Path layout (human-readable):
-          {tenant_slug}/{provider}/{cloud_account_number}/{year}/{month}/{day}/{execution_id}/result.json
+          {tenant_slug}/{provider}/{cloud_account_number}/{year}/{month}/{day}/[{batch_id}/]{execution_id}/result.json
 
+        When batch_id is set (CIS scan), all job snapshots for that run live under one folder.
         tenant_name and account_identifier are slugified for safe paths. Internal UUIDs are fallbacks only.
         """
         now = datetime.utcnow()
@@ -82,11 +84,14 @@ class SnapshotService:
             account_identifier or account_id,
             fallback=_slugify_path_segment(account_id, fallback="account"),
         )
-        key = (
+        date_prefix = (
             f"{tenant_segment}/{provider_segment}/{account_segment}/"
             f"{now.year}/{now.month:02d}/{now.day:02d}/"
-            f"{execution_id}/result.json"
         )
+        if batch_id:
+            key = f"{date_prefix}{batch_id}/{execution_id}/result.json"
+        else:
+            key = f"{date_prefix}{execution_id}/result.json"
         body = json.dumps(data, default=str).encode("utf-8")
 
         if self._use_local:

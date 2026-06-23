@@ -8,6 +8,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from pathlib import Path
+
 import yaml
 
 # Ensure app is importable (run from repo root with PYTHONPATH=cloud-compliance-engine)
@@ -21,7 +23,8 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from app.config import get_settings
 from app.database import SessionLocal
 from app.models.compliance import Control, FrameworkVersion, RuleVersion
-from app.services.rule_registry import load_controls_from_yaml, load_rules_from_queries_json
+from app.services.rule_engine.catalog import REPO_ROOT, load_compliance_rules_from_data_queries
+from app.services.rule_registry import load_controls_from_yaml, load_rules_from_data_queries
 from app.services.hash_utils import rule_definition_hash
 
 
@@ -41,7 +44,7 @@ def seed_framework(db: Session, entry: dict) -> tuple[int, int]:
     version_name = entry.get("version_name", "1.0.0")
     framework_title = entry.get("framework_title", framework_id)
     controls_path = entry.get("controls_path")
-    rules_path = entry.get("rules_path")
+    rules_source = entry.get("rules_source") or entry.get("rules_path")
 
     if not controls_path:
         return 0, 0
@@ -103,23 +106,42 @@ def seed_framework(db: Session, entry: dict) -> tuple[int, int]:
 
     # Optional: one rule_version per framework (so evaluation_runs can reference it)
     rules_count = 0
-    if rules_path:
-        rules_file = BASE / rules_path
+    if rules_source:
+        rules_file = REPO_ROOT / rules_source if not Path(rules_source).is_absolute() else Path(rules_source)
         if rules_file.exists():
-            _, rules = load_rules_from_queries_json(rules_file)
+            _, rules = load_rules_from_data_queries(rules_file)
             if rules:
                 combined = rule_definition_hash([r.get("rule_definition_hash") for r in rules])
+                definitions = [
+                    {
+                        "control_ref": r.get("control_ref"),
+                        "control_id": r.get("control_id"),
+                        "pass_rule": r.get("pass_rule"),
+                        "required_columns": r.get("required_columns") or [],
+                        "rule_definition_hash": r.get("rule_definition_hash"),
+                        "query_id": r.get("query_id"),
+                        "name": r.get("name"),
+                    }
+                    for r in rules
+                ]
                 stmt_rv = pg_insert(RuleVersion).values(
                     framework_id=framework_id,
                     version_name=version_name,
                     hash=combined,
-                    notes=f"Loaded from {rules_path}",
+                    notes=f"Loaded from {rules_source}",
+                    definitions=definitions,
                 ).on_conflict_do_update(
                     index_elements=["framework_id", "version_name"],
-                    set_={"hash": combined, "notes": f"Loaded from {rules_path}"},
+                    set_={
+                        "hash": combined,
+                        "notes": f"Loaded from {rules_source}",
+                        "definitions": definitions,
+                    },
                 )
                 db.execute(stmt_rv)
                 rules_count = len(rules)
+        else:
+            print(f"  Warning: rules_source not found: {rules_file}")
 
     return count, rules_count
 

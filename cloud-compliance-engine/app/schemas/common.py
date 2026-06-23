@@ -13,7 +13,39 @@ class EvaluationRunCreate(BaseModel):
     snapshot_id: UUID | None = None
     s3_prefix: str | None = None
     framework_id: str = "cis_aws_v6"
+    control_ref: str | None = None
     rule_version: str | None = None
+
+
+class ScanRunResponse(BaseModel):
+    id: UUID
+    batch_id: str
+    tenant_id: UUID
+    account_id: UUID
+    framework_id: str
+    status: str
+    total_controls: int
+    evaluated_controls: int
+    pass_count: int
+    fail_count: int
+    unknown_count: int
+    score_pct: float | None
+    started_at: datetime | None
+    finished_at: datetime | None
+
+    model_config = {"from_attributes": True}
+
+
+class ScanControlResultResponse(BaseModel):
+    control_id: str
+    control_ref: str
+    title: str | None
+    severity: str | None
+    status: str
+    message: str | None
+    evidence_count: int
+    control_result_id: UUID
+    evaluated_at: datetime | None
 
 
 class ControlResultResponse(BaseModel):
