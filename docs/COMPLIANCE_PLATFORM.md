@@ -63,7 +63,9 @@ curl http://localhost:8001/v1/scan-runs/BATCH_ID -H "X-Tenant-Id: ..."
 
 | Topic | Document |
 |-------|----------|
-| **Prioritized task list (start here)** | [IMPLEMENTATION_ROADMAP.md](IMPLEMENTATION_ROADMAP.md) |
+| **Task tracker (checklist)** | [TASK_TRACKER.md](TASK_TRACKER.md) |
+| **Phase 1 — stability & bronze pinning** | [PHASE1.md](PHASE1.md) |
+| **Prioritized task list** | [IMPLEMENTATION_ROADMAP.md](IMPLEMENTATION_ROADMAP.md) |
 | Compliance runbook | [cloud-compliance-engine/RUNBOOK.md](../cloud-compliance-engine/RUNBOOK.md) |
 | Architecture | [cloud-compliance-engine/docs/ARCHITECTURE.md](../cloud-compliance-engine/docs/ARCHITECTURE.md) |
 | Folder layout | [cloud-compliance-engine/docs/FOLDER_STRUCTURE.md](../cloud-compliance-engine/docs/FOLDER_STRUCTURE.md) |

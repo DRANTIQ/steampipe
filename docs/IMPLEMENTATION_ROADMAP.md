@@ -1,7 +1,9 @@
 # Implementation Roadmap — Steampipe + Cloud Compliance
 
 **Purpose:** Prioritized task list to complete **one by one**.  
-**Last updated:** 2026-06-22
+**Last updated:** 2026-06-23
+
+**Live checklist with completion status:** [TASK_TRACKER.md](TASK_TRACKER.md)
 
 Mark tasks `[x]` when done. Do not skip dependency order unless noted.
 

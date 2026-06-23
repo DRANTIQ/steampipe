@@ -34,6 +34,7 @@ _macos_cert_hint_logged = False
 from src.models import ExecutionBatch, ExecutionJob, ExecutionResult, CloudAccount, Query, Tenant
 from src.models.enums import ExecutionJobStatus, ExecutionResultStatus
 from src.services.database import get_db_session_factory
+from src.services.job_completed_event import build_job_completed_payload
 from src.services.queue import QueueService
 from src.services.snapshot import SnapshotService
 from src.services.secrets import SecretsService
@@ -1003,19 +1004,16 @@ def process_job(session: Session, job_id: str, payload: dict) -> None:
             meta = query.extra_metadata if isinstance(query.extra_metadata, dict) else {}
             try:
                 QueueService().publish_job_completed(
-                    {
-                        "execution_job_id": job_id,
-                        "snapshot_path": snapshot_path,
-                        "tenant_id": job.tenant_id,
-                        "account_id": job.account_id,
-                        "query_id": job.query_id,
-                        "batch_id": job.batch_id,
-                        "control_ref": meta.get("control_ref"),
-                        "control_id": meta.get("control_id"),
-                        "framework_id": meta.get("framework_id"),
-                        "category": meta.get("category"),
-                        "row_count": row_count,
-                    }
+                    build_job_completed_payload(
+                        job_id=job_id,
+                        snapshot_path=snapshot_path,
+                        tenant_id=job.tenant_id,
+                        account_id=job.account_id,
+                        query_id=job.query_id,
+                        batch_id=job.batch_id,
+                        extra_metadata=meta,
+                        row_count=row_count,
+                    )
                 )
             except Exception as pub_err:
                 logger.warning("Job %s: failed to publish job_completed event: %s", job_id, pub_err)
