@@ -49,12 +49,18 @@ Multi-tenant platform for running **Steampipe** SQL and benchmark queries across
 
 ## Docs
 
-- **compliance-frameworks/** – CIS benchmark PDFs (AWS/Azure), SOC/ISO/NIST acquisition guides, `catalog.yaml`
-- **docs/STAGE1_FULL_GUIDE.md** – Stage 1 full guide: file structure, all APIs, data flow, how to run
-- **docs/RUN_WITH_REMOTE_DB.md** – Run with Supabase + Upstash (no local Postgres/Redis)
-- **LOCAL_DEVELOPMENT.md** – Migrations, dummy data, local run
-- **Testing.md** – Running services and pytest
-- **user_input.md** – Canonical `.env` values (Postgres, Redis, S3)
+**Canonical documentation:** [infra-state-docs](../infra-state-docs/README.md) (sibling repo).
+
+| Topic | Location |
+|-------|----------|
+| Task tracker | `infra-state-docs/platform/TASK_TRACKER.md` |
+| Stage 1 full guide | `infra-state-docs/steampipe/STAGE1_FULL_GUIDE.md` |
+| CIS scan | `infra-state-docs/steampipe/CIS_SCAN_RUNBOOK.md` |
+| Remote DB | `infra-state-docs/steampipe/RUN_WITH_REMOTE_DB.md` |
+| Compliance platform | `infra-state-docs/platform/COMPLIANCE_PLATFORM.md` |
+| Local dev | `LOCAL_DEVELOPMENT.md` (this repo) |
+
+Stage 2 compliance runs from **cloud-compliance-engine** repo (`docker compose up` on port 8001).
 
 ## Docker (Linux; recommended to avoid macOS cert/keychain issues)
 

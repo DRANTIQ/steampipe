@@ -43,40 +43,4 @@ services:
     command: ["python", "-c", "from src.scheduler.cron_scheduler import run_scheduler; run_scheduler()"]
     restart: unless-stopped
 
-  compliance-api:
-    build: .
-    env_file: .env
-    ports:
-      - "8001:8001"
-    volumes:
-      - ./local/snapshots:/app/local/snapshots
-      - ./cloud-compliance-engine:/app/cloud-compliance-engine
-    environment:
-      PYTHONPATH: /app/cloud-compliance-engine:/app
-      COMPLIANCE_QUEUE_KEY: steampipe:job_completed
-    command:
-      [
-        "python",
-        "-m",
-        "uvicorn",
-        "app.main:app",
-        "--host",
-        "0.0.0.0",
-        "--port",
-        "8001",
-        "--app-dir",
-        "cloud-compliance-engine",
-      ]
-    restart: unless-stopped
-
-  compliance-worker:
-    build: .
-    env_file: .env
-    volumes:
-      - ./local/snapshots:/app/local/snapshots
-      - ./cloud-compliance-engine:/app/cloud-compliance-engine
-    environment:
-      PYTHONPATH: /app/cloud-compliance-engine:/app
-      COMPLIANCE_QUEUE_KEY: steampipe:job_completed
-    command: ["python", "-m", "app.workers.compliance_worker"]
-    restart: unless-stopped
+# Compliance (Stage 2) runs from the cloud-compliance-engine repo — see infra-state-docs/platform/SPLIT_COMPLIANCE_REPO.md
