@@ -2,7 +2,7 @@
 
 Central place for **benchmark PDFs**, **framework metadata**, and **where to obtain** SOC 2, ISO 27001, NIST, PCI, and other policies.
 
-Implementation (Steampipe queries, YAML controls, rule engine) lives in [`cloud-compliance-engine/`](../cloud-compliance-engine/). This folder is the **source-of-truth library** for human-readable benchmarks and acquisition links.
+Implementation (Steampipe queries, YAML controls, rule engine) lives in the **cloud-compliance-engine** sibling repo. This folder is the **source-of-truth library** for human-readable benchmarks and acquisition links.
 
 ---
 
@@ -51,7 +51,7 @@ compliance-frameworks/
 | Azure Storage | azure | v1.0.0 | `cis/azure/storage/` | Reference only |
 | Azure Database | azure | v2.0.0 | `cis/azure/database/` | Reference only |
 
-**Implemented in code today:** `cis_aws_v6` only (~34 automated controls) — see [`cloud-compliance-engine/config/catalog.yaml`](../cloud-compliance-engine/config/catalog.yaml).
+**Implemented in code today:** `cis_aws_v6` only (~35 automated controls) — see `config/catalog.yaml` in the **cloud-compliance-engine** repo.
 
 **Next implementation priority:** Finish CIS AWS Foundations v6/v7 → Azure Foundations v6 → service-specific CIS (storage, database) as needed.
 

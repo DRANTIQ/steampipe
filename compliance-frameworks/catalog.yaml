@@ -27,8 +27,8 @@ frameworks:
     version: "6.0.0"
     reference_pdf: cis/aws/foundations/CIS_Amazon_Web_Services_Foundations_Benchmark_v6.0.0.pdf  # add PDF here when downloaded
     implementation_id: cis_aws_v6
-    implementation_controls: cloud-compliance-engine/config/cis_v6_controls.yaml
-    implementation_queries: cloud-compliance-engine/queries/cis_v6_queries.json
+    implementation_controls: config/cis_v6_controls.yaml   # in cloud-compliance-engine repo
+    implementation_queries: queries/cis_v6_queries.json     # in cloud-compliance-engine repo
     status: in_progress
 
   - id: cis_aws_compute_v1

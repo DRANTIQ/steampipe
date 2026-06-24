@@ -36,28 +36,37 @@ USE_LOCAL_STORAGE=true
 LOCAL_STORAGE_PATH=./local/snapshots
 ```
 
-### 3. Apply all migrations (fresh schema)
+### 3. Apply migrations (two repos, shared Postgres)
+
+**Stage 1 — this repo (public schema):**
 
 ```bash
 ./scripts/init_db.sh
 ```
 
-This runs `alembic upgrade head`, which applies in order:
+Applies:
 
-- **001** – Initial schema: tenants, users, api_keys, cloud_accounts, queries, schedules, execution_jobs, execution_results
-- **002** – Production job engine: execution_batches, batch_id, content_hash, indexes
-- **003** – Compliance schema: controls, framework_versions, rule_versions, snapshots, evaluation_runs, execution_snapshot_rows, control_results, control_evidence_resources, control_state, compliance_summary, jobs, control_metrics + RLS
-- **004** – Provider/category columns on framework_versions and controls
+- **001** – tenants, users, api_keys, cloud_accounts, queries, schedules, execution_jobs, execution_results
+- **002** – execution_batches, batch_id, content_hash, indexes
+- **007** – framework scan schedules on `query_schedules` (T-030)
 
-### 4. Seed compliance catalog (controls + frameworks)
-
-Required for the Cloud Compliance Engine APIs:
+**Stage 2 — [cloud-compliance-engine](https://github.com/YOUR_ORG/cloud-compliance-engine) sibling repo (`compliance` schema):**
 
 ```bash
-PYTHONPATH=cloud-compliance-engine python -m app.scripts.seed_catalog
+cd ../cloud-compliance-engine
+alembic upgrade head
+python -m app.scripts.seed_catalog
 ```
 
-This loads `config/catalog.yaml` → `compliance.controls` and `compliance.framework_versions` (CIS AWS v6 + 34 automated controls).
+Compliance migrations use table `alembic_version_compliance` (separate from Stage 1 `alembic_version`).
+
+### 4. Seed Stage 1 query catalog (optional)
+
+```bash
+python scripts/setup_compliance.py
+```
+
+Loads `data/queries.json` into `public.queries` (CIS compliance queries for scans).
 
 ### 5. (Optional) Seed dummy data for main app
 
@@ -69,32 +78,33 @@ python scripts/seed_dummy_data.py
 
 ### 6. Run the app
 
-**Option A – Main execution platform (API + worker + scheduler):**
+**Stage 1 — execution platform (this repo):**
 
 ```bash
-./scripts/run_api.sh      # Terminal 1
+./scripts/run_api.sh      # Terminal 1 → :8000
 ./scripts/run_worker.sh   # Terminal 2
 ./scripts/run_scheduler.sh # Terminal 3
 ```
 
-**Option B – Cloud Compliance Engine only:**
+**Stage 2 — compliance (sibling repo):**
 
 ```bash
-PYTHONPATH=cloud-compliance-engine python -m uvicorn app.main:app --reload --app-dir cloud-compliance-engine --port 8000
+cd ../cloud-compliance-engine
+docker compose up -d   # compliance-api :8001 + compliance-worker
 ```
 
-API docs: http://localhost:8000/docs
+E2E smoke: `python scripts/smoke_e2e_scan.py` (from steampipe repo).
 
 ---
 
 ## Schema overview
 
-| Schema    | Tables |
-|-----------|--------|
-| **public** | tenants, users, api_keys, cloud_accounts, queries, query_schedules, execution_batches, execution_jobs, execution_results |
-| **compliance** | controls, framework_versions, rule_versions, snapshots, evaluation_runs, execution_snapshot_rows, control_results, control_evidence_resources, control_state, compliance_summary, jobs, control_metrics |
+| Schema    | Owner repo | Tables |
+|-----------|------------|--------|
+| **public** | steampipe | tenants, users, cloud_accounts, queries, query_schedules, execution_batches, execution_jobs, execution_results |
+| **compliance** | cloud-compliance-engine | controls, scan_runs, snapshots, control_results, control_state, … |
 
-Postgres holds all data; Redis is used for the job queue (`steampipe:execution_jobs`) and optionally compliance job completion (`compliance:job_completed`).
+Postgres holds all data; Redis: Stage 1 job queue + `steampipe:job_completed` events for compliance worker.
 
 ---
 
@@ -110,6 +120,6 @@ If you provision **new** Postgres and Redis on Railway (or another provider), up
 |-------|-----|
 | `could not connect to server` | Ensure `docker compose -f docker-compose.local.yml up -d` is running; wait for health checks. |
 | `relation "tenants" does not exist` | Run `./scripts/init_db.sh` first. |
-| Empty `GET /v1/controls` | Run `PYTHONPATH=cloud-compliance-engine python -m app.scripts.seed_catalog`. |
+| Empty `GET /v1/controls` on :8001 | Run `seed_catalog` in **cloud-compliance-engine** repo. |
 | Redis connection refused | Ensure Redis container is running: `docker compose -f docker-compose.local.yml ps`. |
 | Alembic "duplicate key" | DB already has schema; you're reapplying. Use `alembic downgrade base` then `alembic upgrade head` only if you truly want a full reset. |
