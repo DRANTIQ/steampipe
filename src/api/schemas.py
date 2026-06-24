@@ -95,10 +95,25 @@ class ScheduleCreate(BaseModel):
     enabled: bool = True
 
 
+class ScheduleScanCreate(BaseModel):
+    """Cron schedule for full framework scan (e.g. nightly CIS) per account."""
+    tenant_id: str
+    account_id: str | None = None
+    framework_id: str = "cis_aws_v6"
+    category: str = "compliance"
+    cron_expression: str = "0 2 * * *"
+    timezone: str = "UTC"
+    enabled: bool = True
+
+
 class ScheduleResponse(BaseModel):
     id: str
     tenant_id: str
-    query_id: str
+    query_id: str | None
+    account_id: str | None = None
+    schedule_kind: str = "query"
+    framework_id: str | None = None
+    category: str | None = None
     cron_expression: str
     timezone: str
     enabled: bool

@@ -3,11 +3,46 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException, Query as Q
 
 from src.api.deps import DbSession
-from src.api.schemas import ScheduleCreate, ScheduleResponse
-from src.models import Query, QuerySchedule, Tenant
+from src.api.schemas import ScheduleCreate, ScheduleScanCreate, ScheduleResponse
+from src.models import CloudAccount, Query, QuerySchedule, Tenant
 from src.scheduler.cron_scheduler import compute_next_run
+from src.services.scheduled_scan import create_framework_scan_schedule
 
 router = APIRouter()
+
+
+@router.post("/scan", response_model=ScheduleResponse)
+def create_scan_schedule(session: DbSession, body: ScheduleScanCreate) -> QuerySchedule:
+    """Schedule recurring CIS/framework scans (T-030). One batch per account per tick."""
+    tenant = session.query(Tenant).filter(Tenant.id == body.tenant_id, Tenant.deleted_at.is_(None)).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    if body.account_id:
+        account = (
+            session.query(CloudAccount)
+            .filter(
+                CloudAccount.id == body.account_id,
+                CloudAccount.tenant_id == body.tenant_id,
+                CloudAccount.deleted_at.is_(None),
+            )
+            .first()
+        )
+        if not account:
+            raise HTTPException(status_code=404, detail="Account not found")
+    next_run = compute_next_run(body.cron_expression, body.timezone)
+    schedule = create_framework_scan_schedule(
+        session,
+        tenant_id=body.tenant_id,
+        cron_expression=body.cron_expression,
+        framework_id=body.framework_id,
+        category=body.category,
+        account_id=body.account_id,
+        timezone=body.timezone,
+        enabled=body.enabled,
+        next_run_at=next_run,
+    )
+    session.flush()
+    return schedule
 
 
 @router.post("", response_model=ScheduleResponse)
