@@ -5,9 +5,13 @@
 # Up:     docker compose -f docker-compose.remote.yml up
 # Init:   docker compose -f docker-compose.remote.yml run --rm api alembic upgrade head
 #
-# Requires .env with remote DATABASE_URL, REDIS_URL, AWS creds, and optionally:
-#   USE_LOCAL_STORAGE=true
-#   LOCAL_STORAGE_PATH=./local/snapshots
+# Requires .env with remote DATABASE_URL, REDIS_URL, AWS creds for S3 snapshots:
+#   USE_LOCAL_STORAGE=false
+#   S3_BUCKET=steampipe-data-storage
+#   S3_REGION=us-east-1
+#   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY [/ AWS_SESSION_TOKEN]
+#
+# Local snapshots (dev only): USE_LOCAL_STORAGE=true, LOCAL_STORAGE_PATH=./local/snapshots
 #
 # No platform: pin — Docker uses the host CPU (amd64 on Intel Windows, arm64 on Apple Silicon).
 # Forcing linux/arm64 on amd64 hosts breaks Steampipe/AWS plugin binaries under emulation.
