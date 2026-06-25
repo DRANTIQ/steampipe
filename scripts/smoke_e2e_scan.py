@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """T-014: End-to-end smoke test — Stage 1 scan + compliance score.
 
-Triggers a CIS scan, waits for Stage 1 batch completion, then polls compliance
-until the scan run is completed with all controls evaluated.
+Triggers a CIS scan on Stage 1, then polls compliance unified status (T-033)
+until collection and evaluation complete.
 
 Exit 0 on success, 1 on timeout or failure.
 
@@ -37,32 +37,8 @@ def _request(
         return json.loads(resp.read().decode())
 
 
-def _poll_stage1_batch(
-    base_url: str,
-    batch_id: str,
-    *,
-    timeout: int,
-    interval: int,
-) -> dict[str, Any]:
-    url = f"{base_url.rstrip('/')}/api/v1/executions/batches/{batch_id}"
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        batch = _request("GET", url)
-        status = batch.get("status")
-        completed = batch.get("completed_jobs", 0)
-        failed = batch.get("failed_jobs", 0)
-        total = batch.get("total_jobs", 0)
-        print(f"[stage1] batch={batch_id} status={status} done={completed}/{total} failed={failed}")
-        if status in ("completed", "failed", "partial"):
-            if failed > 0:
-                print(f"[stage1] WARNING: {failed} job(s) failed", file=sys.stderr)
-            return batch
-        time.sleep(interval)
-    raise TimeoutError(f"Stage 1 batch {batch_id} did not finish within {timeout}s")
-
-
-def _poll_compliance_scan(
-    base_url: str,
+def _poll_unified_scan_status(
+    compliance_url: str,
     batch_id: str,
     tenant_id: str,
     *,
@@ -70,46 +46,51 @@ def _poll_compliance_scan(
     timeout: int,
     interval: int,
 ) -> dict[str, Any]:
-    url = f"{base_url.rstrip('/')}/v1/scan-runs/{batch_id}"
+    url = f"{compliance_url.rstrip('/')}/v1/scan-runs/{batch_id}/status"
     headers = {"X-Tenant-Id": tenant_id}
     deadline = time.time() + timeout
     last: dict[str, Any] | None = None
     while time.time() < deadline:
         try:
-            scan = _request("GET", url, headers=headers)
+            status = _request("GET", url, headers=headers)
         except urllib.error.HTTPError as exc:
             if exc.code == 404:
-                print(f"[compliance] scan not created yet for batch={batch_id}")
+                print(f"[unified] batch not visible yet batch={batch_id}")
                 time.sleep(interval)
                 continue
             raise
-        last = scan
-        evaluated = scan.get("evaluated_controls", 0)
-        total = scan.get("total_controls", expected_controls)
-        status = scan.get("status")
+        last = status
+        collection = status.get("collection") or {}
+        compliance = status.get("compliance") or {}
+        overall = status.get("overall_status")
         print(
-            f"[compliance] batch={batch_id} status={status} "
-            f"evaluated={evaluated}/{total} score={scan.get('score_pct')}"
+            f"[unified] batch={batch_id} overall={overall} "
+            f"collection={collection.get('completed_jobs', 0)}/{collection.get('total_jobs', 0)} "
+            f"evaluated={compliance.get('evaluated_controls', 0)}/{compliance.get('total_controls', expected_controls)} "
+            f"score={compliance.get('score_pct')}"
         )
-        if status == "completed" and evaluated >= expected_controls:
-            return scan
+        if overall == "completed":
+            evaluated = compliance.get("evaluated_controls", 0)
+            if evaluated >= expected_controls:
+                return status
+        if overall in ("failed", "partial"):
+            return status
         time.sleep(interval)
     raise TimeoutError(
-        f"Compliance scan for batch {batch_id} did not complete within {timeout}s "
+        f"Unified scan status for batch {batch_id} did not complete within {timeout}s "
         f"(last={json.dumps(last)})"
     )
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="E2E smoke: Stage 1 scan → compliance score")
+    parser = argparse.ArgumentParser(description="E2E smoke: Stage 1 scan → unified compliance status")
     parser.add_argument("--tenant-id", required=True)
     parser.add_argument("--account-id", required=True)
     parser.add_argument("--stage1-url", default="http://localhost:8000")
     parser.add_argument("--compliance-url", default="http://localhost:8001")
     parser.add_argument("--framework-id", default="cis_aws_v6")
     parser.add_argument("--expected-controls", type=int, default=35)
-    parser.add_argument("--stage1-timeout", type=int, default=900)
-    parser.add_argument("--compliance-timeout", type=int, default=600)
+    parser.add_argument("--timeout", type=int, default=900)
     parser.add_argument("--poll-interval", type=int, default=10)
     args = parser.parse_args()
 
@@ -127,34 +108,36 @@ def main() -> int:
     total_jobs = started.get("total_jobs", args.expected_controls)
     print(f"[stage1] batch_id={batch_id} total_jobs={total_jobs}")
 
-    _poll_stage1_batch(
-        args.stage1_url,
-        batch_id,
-        timeout=args.stage1_timeout,
-        interval=args.poll_interval,
-    )
-
-    scan = _poll_compliance_scan(
+    status = _poll_unified_scan_status(
         args.compliance_url,
         batch_id,
         args.tenant_id,
         expected_controls=args.expected_controls,
-        timeout=args.compliance_timeout,
+        timeout=args.timeout,
         interval=args.poll_interval,
     )
+    compliance = status.get("compliance") or {}
     print(
         json.dumps(
             {
                 "batch_id": batch_id,
-                "status": scan.get("status"),
-                "evaluated_controls": scan.get("evaluated_controls"),
-                "pass_count": scan.get("pass_count"),
-                "fail_count": scan.get("fail_count"),
-                "score_pct": scan.get("score_pct"),
+                "overall_status": status.get("overall_status"),
+                "collection": status.get("collection"),
+                "evaluated_controls": compliance.get("evaluated_controls"),
+                "pass_count": compliance.get("pass_count"),
+                "fail_count": compliance.get("fail_count"),
+                "score_pct": compliance.get("score_pct"),
+                "score_weighted_pct": compliance.get("score_weighted_pct"),
+                "drift_count": compliance.get("drift_count"),
+                "catalog_total": compliance.get("catalog_total"),
+                "manual_total": compliance.get("manual_total"),
             },
             indent=2,
         )
     )
+    if status.get("overall_status") != "completed":
+        print(f"smoke_e2e_scan FAILED: overall_status={status.get('overall_status')}", file=sys.stderr)
+        return 1
     return 0
 
 
