@@ -28,7 +28,7 @@ def main() -> int:
     parser.add_argument("--tenant-id", required=True)
     parser.add_argument("--email", required=True)
     parser.add_argument("--password", required=True)
-    parser.add_argument("--role", default="tenant_admin", choices=[r.value for r in UserRole if r != UserRole.super_admin])
+    parser.add_argument("--role", default="tenant_admin", choices=[r.value for r in UserRole])
     parser.add_argument("--username", default=None)
     args = parser.parse_args()
 
