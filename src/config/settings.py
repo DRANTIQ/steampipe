@@ -111,6 +111,7 @@ class Settings(BaseSettings):
 
     # Auth
     JWT_SECRET_KEY: str = "dev-secret"
+    JWT_EXPIRE_MINUTES: int = 60 * 24
     API_AUTH_REQUIRED: bool = False
     RATE_LIMIT_PER_MINUTE: int = 60
 
