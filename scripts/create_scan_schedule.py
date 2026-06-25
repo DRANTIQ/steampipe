@@ -11,9 +11,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from api_auth import bearer_headers, login
 
 
 def main() -> int:
@@ -25,7 +29,15 @@ def main() -> int:
     parser.add_argument("--cron", dest="cron_expression", default="0 2 * * *")
     parser.add_argument("--timezone", default="UTC")
     parser.add_argument("--api-url", default="http://localhost:8000")
+    parser.add_argument("--email", default=os.environ.get("SMOKE_EMAIL", "ops@drantiq.local"))
+    parser.add_argument("--password", default=os.environ.get("SMOKE_PASSWORD", "password123"))
+    parser.add_argument("--skip-login", action="store_true")
     args = parser.parse_args()
+
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    if not args.skip_login:
+        session = login(args.api_url, args.email, args.password)
+        headers = bearer_headers(session["access_token"])
 
     body = {
         "tenant_id": args.tenant_id,
@@ -40,7 +52,7 @@ def main() -> int:
     req = urllib.request.Request(
         url,
         data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json"},
+        headers=headers,
         method="POST",
     )
     try:

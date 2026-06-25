@@ -4,22 +4,30 @@
 Triggers a CIS scan on Stage 1, then polls compliance unified status (T-033)
 until collection and evaluation complete.
 
+Requires API_AUTH_REQUIRED=true on Stage 1 and compliance APIs (login first).
+
 Exit 0 on success, 1 on timeout or failure.
 
-Example:
+Example (drantiq_platform):
   python scripts/smoke_e2e_scan.py \\
-    --tenant-id 5b12b902-d1fc-4aec-b0fb-f2d7e8af4b47 \\
-    --account-id e0e0075b-310d-4e37-9997-81626fe52580
+    --tenant-id 46e2c986-c8d3-44a6-8738-3c8b368fa8e8 \\
+    --account-id 6a1a155e-243f-437b-a2c3-ba69be9258bc \\
+    --email admin@drantiq.local \\
+    --password password123
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 import urllib.error
 import urllib.request
 from typing import Any
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from api_auth import bearer_headers, login
 
 
 def _request(
@@ -40,19 +48,18 @@ def _request(
 def _poll_unified_scan_status(
     compliance_url: str,
     batch_id: str,
-    tenant_id: str,
     *,
+    auth_headers: dict[str, str],
     expected_controls: int,
     timeout: int,
     interval: int,
 ) -> dict[str, Any]:
     url = f"{compliance_url.rstrip('/')}/v1/scan-runs/{batch_id}/status"
-    headers = {"X-Tenant-Id": tenant_id}
     deadline = time.time() + timeout
     last: dict[str, Any] | None = None
     while time.time() < deadline:
         try:
-            status = _request("GET", url, headers=headers)
+            status = _request("GET", url, headers=auth_headers)
         except urllib.error.HTTPError as exc:
             if exc.code == 404:
                 print(f"[unified] batch not visible yet batch={batch_id}")
@@ -83,7 +90,7 @@ def _poll_unified_scan_status(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="E2E smoke: Stage 1 scan → unified compliance status")
+    parser = argparse.ArgumentParser(description="E2E smoke: Stage 1 scan -> unified compliance status")
     parser.add_argument("--tenant-id", required=True)
     parser.add_argument("--account-id", required=True)
     parser.add_argument("--stage1-url", default="http://localhost:8000")
@@ -92,7 +99,31 @@ def main() -> int:
     parser.add_argument("--expected-controls", type=int, default=35)
     parser.add_argument("--timeout", type=int, default=900)
     parser.add_argument("--poll-interval", type=int, default=10)
+    parser.add_argument("--email", default=os.environ.get("SMOKE_EMAIL", "admin@drantiq.local"))
+    parser.add_argument("--password", default=os.environ.get("SMOKE_PASSWORD", "password123"))
+    parser.add_argument(
+        "--skip-login",
+        action="store_true",
+        help="No Bearer token (only when API_AUTH_REQUIRED=false on both APIs)",
+    )
     args = parser.parse_args()
+
+    token: str | None = None
+    if not args.skip_login:
+        print(f"[auth] logging in as {args.email}...")
+        session = login(args.stage1_url, args.email, args.password)
+        token = session["access_token"]
+        login_tenant = session.get("tenant_id")
+        print(f"[auth] tenant_id={login_tenant} role={session.get('role')}")
+        if login_tenant and login_tenant != args.tenant_id:
+            print(
+                f"smoke_e2e_scan FAILED: user tenant {login_tenant} != --tenant-id {args.tenant_id}. "
+                "Use a user that belongs to the target tenant.",
+                file=sys.stderr,
+            )
+            return 1
+
+    headers = bearer_headers(token) if token else {"Content-Type": "application/json"}
 
     scan_url = f"{args.stage1_url.rstrip('/')}/api/v1/executions/scan"
     body = {
@@ -103,7 +134,7 @@ def main() -> int:
         "triggered_by": "smoke_e2e_scan",
     }
     print("[stage1] triggering scan...")
-    started = _request("POST", scan_url, body=body)
+    started = _request("POST", scan_url, headers=headers, body=body)
     batch_id = started["batch_id"]
     total_jobs = started.get("total_jobs", args.expected_controls)
     print(f"[stage1] batch_id={batch_id} total_jobs={total_jobs}")
@@ -111,7 +142,7 @@ def main() -> int:
     status = _poll_unified_scan_status(
         args.compliance_url,
         batch_id,
-        args.tenant_id,
+        auth_headers=headers,
         expected_controls=args.expected_controls,
         timeout=args.timeout,
         interval=args.poll_interval,
@@ -144,6 +175,6 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except (TimeoutError, urllib.error.URLError, urllib.error.HTTPError) as exc:
+    except (TimeoutError, urllib.error.URLError, urllib.error.HTTPError, RuntimeError) as exc:
         print(f"smoke_e2e_scan FAILED: {exc}", file=sys.stderr)
         raise SystemExit(1)
