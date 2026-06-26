@@ -8,6 +8,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from src.config import get_settings
+from src.models.enums import UserRole
 from src.services.auth import TokenPayload, decode_access_token
 from src.services.database import get_db_session_factory
 
@@ -60,18 +61,46 @@ def enforce_auth_when_required(
 def require_auth(
     token: TokenPayload | None = Depends(_token_from_header),
 ) -> TokenPayload:
-    settings = get_settings()
     if token:
         return token
-    if not settings.API_AUTH_REQUIRED:
-        raise HTTPException(status_code=401, detail="Authentication required")
     raise HTTPException(status_code=401, detail="Authentication required")
 
 
+AuthUser = Annotated[TokenPayload, Depends(require_auth)]
+
+
+def require_super_admin(auth: AuthUser) -> TokenPayload:
+    if auth.role != UserRole.super_admin.value:
+        raise HTTPException(status_code=403, detail="super_admin required")
+    return auth
+
+
+SuperAdmin = Annotated[TokenPayload, Depends(require_super_admin)]
+
+
 def require_role(*roles: str):
-    def _check(auth: TokenPayload = Depends(require_auth)) -> TokenPayload:
-        if auth.role not in roles and auth.role != "super_admin":
+    def _check(auth: AuthUser) -> TokenPayload:
+        if auth.role not in roles and auth.role != UserRole.super_admin.value:
             raise HTTPException(status_code=403, detail="Insufficient permissions")
         return auth
 
     return _check
+
+
+def is_super_admin(auth: TokenPayload) -> bool:
+    return auth.role == UserRole.super_admin.value
+
+
+def assert_tenant_access(auth: TokenPayload, tenant_id: str) -> None:
+    """Non-super_admin users may only access their own tenant."""
+    if is_super_admin(auth):
+        return
+    if auth.tenant_id != tenant_id:
+        raise HTTPException(status_code=403, detail="Access denied for this tenant")
+
+
+def resolve_list_tenant_filter(auth: TokenPayload, tenant_id: str | None) -> str | None:
+    """List endpoints: scope non-super_admin to their tenant."""
+    if is_super_admin(auth):
+        return tenant_id
+    return auth.tenant_id

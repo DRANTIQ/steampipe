@@ -6,6 +6,36 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 
+# ---- User ----
+class UserCreate(BaseModel):
+    email: str
+    password: str = Field(min_length=8)
+    role: str = "tenant_admin"
+    username: str | None = None
+
+
+class UserUpdate(BaseModel):
+    email: str | None = None
+    password: str | None = Field(default=None, min_length=8)
+    role: str | None = None
+    active: bool | None = None
+    username: str | None = None
+
+
+class UserResponse(BaseModel):
+    id: str
+    tenant_id: str
+    email: str
+    username: str | None
+    role: str
+    active: bool
+    last_login: datetime | None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 # ---- Tenant ----
 class TenantCreate(BaseModel):
     name: str
@@ -241,3 +271,102 @@ class ExecutionResultResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ---- Ops (super_admin) ----
+class OpsQueueDepth(BaseModel):
+    name: str
+    key: str
+    depth: int
+
+
+class OpsQueuesResponse(BaseModel):
+    redis_ok: bool
+    queues: list[OpsQueueDepth]
+
+
+class OpsJobStatusCount(BaseModel):
+    status: str
+    count: int
+
+
+class OpsJobsSummaryResponse(BaseModel):
+    by_status: list[OpsJobStatusCount]
+
+
+class OpsStuckBatchResponse(BaseModel):
+    id: str
+    tenant_id: str
+    tenant_name: str | None = None
+    status: str
+    trigger_type: str
+    total_jobs: int
+    completed_jobs: int
+    failed_jobs: int
+    created_at: datetime
+    finished_at: datetime | None = None
+    age_minutes: float
+
+    class Config:
+        from_attributes = True
+
+
+class OpsBatchStatusCount(BaseModel):
+    status: str
+    count: int
+
+
+class OpsRecentBatch(BaseModel):
+    id: str
+    tenant_id: str
+    tenant_name: str | None = None
+    status: str
+    trigger_type: str
+    total_jobs: int
+    completed_jobs: int
+    failed_jobs: int
+    created_at: datetime
+    finished_at: datetime | None = None
+    progress_pct: float
+
+
+class OpsFailedJob(BaseModel):
+    id: str
+    tenant_id: str
+    tenant_name: str | None = None
+    account_id: str
+    query_id: str
+    batch_id: str | None = None
+    status: str
+    retry_count: int
+    finished_at: datetime | None = None
+    error_message: str | None = None
+
+
+class OpsPlatformCounts(BaseModel):
+    tenants: int
+    active_tenants: int
+    cloud_accounts: int
+    schedules: int
+    batches_running: int
+    account_session_locks: int
+
+
+class OpsJobsWindow(BaseModel):
+    last_24h_total: int
+    last_24h_success: int
+    last_24h_failed: int
+    in_flight: int
+
+
+class OpsSummaryResponse(BaseModel):
+    checked_at: datetime
+    redis_ok: bool
+    queues: list[OpsQueueDepth]
+    platform: OpsPlatformCounts
+    jobs: OpsJobsWindow
+    jobs_by_status: list[OpsJobStatusCount]
+    batches_by_status: list[OpsBatchStatusCount]
+    recent_batches: list[OpsRecentBatch]
+    stuck_batches: list[OpsStuckBatchResponse]
+    recent_failed_jobs: list[OpsFailedJob]

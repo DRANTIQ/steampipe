@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 
 from src.api.deps import enforce_auth_when_required
-from src.api.routes import tenants, accounts, queries, schedules, executions, auth
+from src.api.routes import tenants, accounts, queries, schedules, executions, auth, ops, users
 
 api_router = APIRouter(prefix="/api/v1", tags=["api"])
 
@@ -10,6 +10,12 @@ api_router.include_router(
     tenants.router,
     prefix="/tenants",
     tags=["tenants"],
+    dependencies=[Depends(enforce_auth_when_required)],
+)
+api_router.include_router(
+    users.router,
+    prefix="/tenants",
+    tags=["users"],
     dependencies=[Depends(enforce_auth_when_required)],
 )
 api_router.include_router(
@@ -34,5 +40,11 @@ api_router.include_router(
     executions.router,
     prefix="/executions",
     tags=["executions"],
+    dependencies=[Depends(enforce_auth_when_required)],
+)
+api_router.include_router(
+    ops.router,
+    prefix="/ops",
+    tags=["ops"],
     dependencies=[Depends(enforce_auth_when_required)],
 )

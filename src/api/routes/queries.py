@@ -2,7 +2,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query as Q
 
-from src.api.deps import DbSession
+from src.api.deps import AuthUser, SuperAdmin, DbSession
 from src.api.schemas import QueryCreate, QueryResponse
 from src.models import Query
 from src.services.query_hash import content_hash_for_query_text
@@ -11,7 +11,7 @@ router = APIRouter()
 
 
 @router.post("", response_model=QueryResponse)
-def create_query(session: DbSession, body: QueryCreate) -> Query:
+def create_query(session: DbSession, body: QueryCreate, auth: SuperAdmin) -> Query:
     existing = session.query(Query).filter(Query.name == body.name, Query.version == body.version).first()
     if existing:
         raise HTTPException(status_code=409, detail="Query with this name and version already exists")

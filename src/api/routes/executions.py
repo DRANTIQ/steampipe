@@ -4,7 +4,8 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException, Query as Q
 from sqlalchemy import func
 
-from src.api.deps import DbSession
+from src.api.deps import AuthUser, SuperAdmin
+from src.api.deps import DbSession, assert_tenant_access, resolve_list_tenant_filter
 from src.api.schemas import (
     ExecutionCreate,
     ExecutionBulkCreate,
@@ -30,10 +31,25 @@ from src.services.execution_batch_service import (
 from src.services.query_catalog import filter_queries
 from src.services.queue import QueueService
 from src.services.snapshot import SnapshotService
+from src.services.auth import TokenPayload
 
 router = APIRouter()
 
 CHUNK_SIZE = 200  # align with BULK_QUERY_IDS_MAX
+
+
+def _assert_job_tenant(session: DbSession, auth: TokenPayload, job: ExecutionJob | None) -> ExecutionJob:
+    if not job:
+        raise HTTPException(status_code=404, detail="Execution job not found")
+    assert_tenant_access(auth, job.tenant_id)
+    return job
+
+
+def _assert_batch_tenant(session: DbSession, auth: TokenPayload, batch: ExecutionBatch | None) -> ExecutionBatch:
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    assert_tenant_access(auth, batch.tenant_id)
+    return batch
 
 
 def _count_tenant_jobs_today(session: DbSession, tenant_id: str) -> int:
@@ -84,7 +100,8 @@ def _check_daily_limit(session: DbSession, tenant: Tenant, additional_jobs: int)
 
 
 @router.post("", response_model=ExecutionResponse)
-def create_execution(session: DbSession, body: ExecutionCreate) -> ExecutionResponse:
+def create_execution(session: DbSession, body: ExecutionCreate, auth: AuthUser) -> ExecutionResponse:
+    assert_tenant_access(auth, body.tenant_id)
     _check_tenant_limits(session, body.tenant_id)
     _get_account_for_tenant(session, body.tenant_id, body.account_id)
     query = session.query(Query).filter(Query.id == body.query_id, Query.deleted_at.is_(None)).first()
@@ -115,7 +132,8 @@ def create_execution(session: DbSession, body: ExecutionCreate) -> ExecutionResp
 
 
 @router.post("/bulk", response_model=ExecutionBulkResponse)
-def create_executions_bulk(session: DbSession, body: ExecutionBulkCreate) -> ExecutionBulkResponse:
+def create_executions_bulk(session: DbSession, body: ExecutionBulkCreate, auth: AuthUser) -> ExecutionBulkResponse:
+    assert_tenant_access(auth, body.tenant_id)
     """Create one execution job per query for the same account. All jobs share one batch."""
     if not body.query_ids:
         raise HTTPException(status_code=400, detail="query_ids must not be empty")
@@ -166,7 +184,8 @@ def create_executions_bulk(session: DbSession, body: ExecutionBulkCreate) -> Exe
 
 
 @router.post("/scan", response_model=ExecutionScanResponse)
-def create_execution_scan(session: DbSession, body: ExecutionScanCreate) -> ExecutionScanResponse:
+def create_execution_scan(session: DbSession, body: ExecutionScanCreate, auth: AuthUser) -> ExecutionScanResponse:
+    assert_tenant_access(auth, body.tenant_id)
     """
     Run all catalog queries matching category/framework for one cloud account.
     Use for full CIS scans: framework_id=cis_aws_v6, category=compliance.
@@ -226,7 +245,7 @@ def create_execution_scan(session: DbSession, body: ExecutionScanCreate) -> Exec
 
 
 @router.post("/trigger-tenant", response_model=ExecutionTriggerTenantResponse)
-def trigger_tenant(session: DbSession, body: ExecutionTriggerTenantCreate) -> ExecutionTriggerTenantResponse:
+def trigger_tenant(session: DbSession, body: ExecutionTriggerTenantCreate, auth: SuperAdmin) -> ExecutionTriggerTenantResponse:
     """Run all queries on all accounts for a tenant (all providers). Creates a batch and jobs in chunks of 200."""
     tenant = _check_tenant_limits(session, body.tenant_id)
     accounts = (
@@ -296,26 +315,26 @@ def trigger_tenant(session: DbSession, body: ExecutionTriggerTenantCreate) -> Ex
     summary="Get batch progress",
     operation_id="get_execution_batch_progress",
 )
-def get_batch_progress(session: DbSession, batch_id: str) -> ExecutionBatch:
+def get_batch_progress(session: DbSession, batch_id: str, auth: AuthUser) -> ExecutionBatch:
     """Get batch progress: total_jobs, completed_jobs, failed_jobs, status."""
     batch = session.query(ExecutionBatch).filter(ExecutionBatch.id == batch_id).first()
-    if not batch:
-        raise HTTPException(status_code=404, detail="Batch not found")
-    return batch
+    return _assert_batch_tenant(session, auth, batch)
 
 
 @router.get("", response_model=list[ExecutionJobDetail])
 def list_executions(
     session: DbSession,
+    auth: AuthUser,
     tenant_id: str | None = Q(None),
     status: str | None = Q(None),
     batch_id: str | None = Q(None),
     skip: int = Q(0, ge=0),
     limit: int = Q(20, ge=1, le=100),
 ) -> list[ExecutionJob]:
+    scoped_tenant = resolve_list_tenant_filter(auth, tenant_id)
     q = session.query(ExecutionJob)
-    if tenant_id:
-        q = q.filter(ExecutionJob.tenant_id == tenant_id)
+    if scoped_tenant:
+        q = q.filter(ExecutionJob.tenant_id == scoped_tenant)
     if status:
         q = q.filter(ExecutionJob.status == status)
     if batch_id:
@@ -324,11 +343,9 @@ def list_executions(
 
 
 @router.get("/{job_id}", response_model=ExecutionJobDetail)
-def get_execution(session: DbSession, job_id: str) -> ExecutionJob:
+def get_execution(session: DbSession, job_id: str, auth: AuthUser) -> ExecutionJob:
     job = session.query(ExecutionJob).filter(ExecutionJob.id == job_id).first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Execution job not found")
-    return job
+    return _assert_job_tenant(session, auth, job)
 
 
 def _result_not_found_detail(session: DbSession, job_id: str) -> str:
@@ -343,7 +360,9 @@ def _result_not_found_detail(session: DbSession, job_id: str) -> str:
 
 
 @router.get("/{job_id}/result", response_model=ExecutionResultResponse)
-def get_execution_result(session: DbSession, job_id: str) -> ExecutionResult:
+def get_execution_result(session: DbSession, job_id: str, auth: AuthUser) -> ExecutionResult:
+    job = session.query(ExecutionJob).filter(ExecutionJob.id == job_id).first()
+    _assert_job_tenant(session, auth, job)
     result = session.query(ExecutionResult).filter(ExecutionResult.execution_job_id == job_id).first()
     if not result:
         raise HTTPException(status_code=404, detail=_result_not_found_detail(session, job_id))
@@ -351,8 +370,10 @@ def get_execution_result(session: DbSession, job_id: str) -> ExecutionResult:
 
 
 @router.get("/{job_id}/result/data")
-def get_execution_result_data(session: DbSession, job_id: str) -> dict:
+def get_execution_result_data(session: DbSession, job_id: str, auth: AuthUser) -> dict:
     """Return the snapshot JSON (Steampipe result rows). Available once the job has completed successfully."""
+    job = session.query(ExecutionJob).filter(ExecutionJob.id == job_id).first()
+    _assert_job_tenant(session, auth, job)
     result = session.query(ExecutionResult).filter(ExecutionResult.execution_job_id == job_id).first()
     if not result:
         raise HTTPException(status_code=404, detail=_result_not_found_detail(session, job_id))

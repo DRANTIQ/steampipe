@@ -11,7 +11,14 @@ from src.config import get_settings
 
 QUEUE_KEY = "steampipe:execution_jobs"
 JOB_COMPLETED_KEY = "steampipe:job_completed"
+JOB_COMPLETED_FAILED_KEY = "steampipe:job_completed:failed"
 ACCOUNT_SESSION_LOCK_PREFIX = "steampipe:account_session"
+
+OPS_QUEUE_KEYS = (
+    ("execution_jobs", QUEUE_KEY),
+    ("job_completed", JOB_COMPLETED_KEY),
+    ("job_completed_failed", JOB_COMPLETED_FAILED_KEY),
+)
 ACCOUNT_SESSION_MODE = "account_session"
 
 
@@ -90,7 +97,32 @@ class QueueService:
             return None
 
     def queue_depth(self) -> int:
-        return self._with_retry(lambda: self._get_client().llen(QUEUE_KEY), max_retries=2) or 0
+        return self.list_length(QUEUE_KEY)
+
+    def list_length(self, key: str) -> int:
+        return self._with_retry(lambda: self._get_client().llen(key), max_retries=2) or 0
+
+    def ping_ok(self) -> bool:
+        try:
+            return bool(self._with_retry(lambda: self._get_client().ping(), max_retries=1))
+        except (ConnectionError, RedisError):
+            return False
+
+    def ops_queue_depths(self) -> dict[str, int]:
+        return {name: self.list_length(key) for name, key in OPS_QUEUE_KEYS}
+
+    def count_keys_with_prefix(self, prefix: str) -> int:
+        def _scan() -> int:
+            client = self._get_client()
+            return sum(1 for _ in client.scan_iter(match=f"{prefix}*", count=100))
+
+        try:
+            return self._with_retry(_scan, max_retries=2) or 0
+        except (ConnectionError, RedisError):
+            return 0
+
+    def count_account_session_locks(self) -> int:
+        return self.count_keys_with_prefix(ACCOUNT_SESSION_LOCK_PREFIX)
 
     def publish_job_completed(self, payload: dict[str, Any]) -> None:
         """Notify downstream consumers (e.g. compliance extract) that a job finished successfully."""
