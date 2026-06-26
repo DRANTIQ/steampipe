@@ -115,6 +115,17 @@ class Settings(BaseSettings):
     API_AUTH_REQUIRED: bool = False
     RATE_LIMIT_PER_MINUTE: int = 60
 
+    # Email / password reset (dev: EMAIL_ENABLED=false logs links to stdout)
+    APP_PUBLIC_URL: str = "http://localhost:5173"
+    EMAIL_ENABLED: bool = False
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = "noreply@drantiq.local"
+    SMTP_USE_TLS: bool = True
+    PASSWORD_RESET_EXPIRE_HOURS: int = 24
+
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
     def normalize_db_url(cls, v: str) -> str:

@@ -4,11 +4,12 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.api.deps import DbSession, get_optional_auth
 from src.models.user import User
-from src.services.auth import TokenPayload, create_access_token, verify_password
+from src.services.auth import TokenPayload, create_access_token, hash_password, verify_password
+from src.services.password_reset import consume_password_token, send_reset_email
 
 router = APIRouter()
 
@@ -32,6 +33,19 @@ class MeResponse(BaseModel):
     tenant_id: str
     role: str
     email: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    password: str = Field(min_length=8)
+
+
+class MessageResponse(BaseModel):
+    message: str
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -68,3 +82,25 @@ def me(auth: TokenPayload = Depends(get_optional_auth)):
         role=auth.role,
         email=auth.email,
     )
+
+
+@router.post("/forgot-password", response_model=MessageResponse)
+def forgot_password(body: ForgotPasswordRequest, db: DbSession) -> MessageResponse:
+    """Request a password reset link. Always returns success to avoid email enumeration."""
+    email = body.email.strip().lower()
+    user = db.query(User).filter(User.email == email, User.active == True).first()
+    if user:
+        send_reset_email(db, user, purpose="reset")
+    return MessageResponse(
+        message="If an account exists for that email, a reset link has been sent.",
+    )
+
+
+@router.post("/reset-password", response_model=MessageResponse)
+def reset_password(body: ResetPasswordRequest, db: DbSession) -> MessageResponse:
+    user = consume_password_token(db, body.token.strip())
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+    user.hashed_password = hash_password(body.password)
+    db.flush()
+    return MessageResponse(message="Password updated. You can sign in now.")

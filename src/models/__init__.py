@@ -5,6 +5,7 @@ from src.models.enums import (
     ExecutionResultStatus,
     UserRole,
 )
+from src.models.password_reset_token import PasswordResetToken
 from src.models.tenant import Tenant
 from src.models.user import User
 from src.models.api_key import APIKey
@@ -24,6 +25,7 @@ __all__ = [
     "UserRole",
     "Tenant",
     "User",
+    "PasswordResetToken",
     "APIKey",
     "CloudAccount",
     "Query",

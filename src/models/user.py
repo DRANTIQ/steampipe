@@ -26,3 +26,4 @@ class User(Base, TimestampMixin):
 
     tenant = relationship("Tenant", back_populates="users")
     triggered_jobs = relationship("ExecutionJob", back_populates="triggered_by_user")
+    password_reset_tokens = relationship("PasswordResetToken", back_populates="user", cascade="all, delete-orphan")

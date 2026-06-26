@@ -1,16 +1,16 @@
-"""Tenant user management (super_admin)."""
+"""Tenant user management (tenant_admin or super_admin)."""
 from __future__ import annotations
 
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query
 
-from src.api.deps import AuthUser, SuperAdmin, assert_tenant_access
-from src.api.deps import DbSession
+from src.api.deps import DbSession, TenantAdmin, assert_tenant_admin_access
 from src.api.schemas import UserCreate, UserResponse, UserUpdate
 from src.models import Tenant, User
 from src.models.enums import UserRole
 from src.services.auth import hash_password
+from src.services.password_reset import send_reset_email
 
 router = APIRouter()
 
@@ -34,11 +34,11 @@ def _user_response(user: User) -> UserResponse:
 def list_tenant_users(
     session: DbSession,
     tenant_id: str,
-    auth: AuthUser,
+    auth: TenantAdmin,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
 ) -> list[UserResponse]:
-    assert_tenant_access(auth, tenant_id)
+    assert_tenant_admin_access(auth, tenant_id)
     tenant = session.query(Tenant).filter(Tenant.id == tenant_id, Tenant.deleted_at.is_(None)).first()
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
@@ -58,8 +58,9 @@ def create_tenant_user(
     session: DbSession,
     tenant_id: str,
     body: UserCreate,
-    auth: SuperAdmin,
+    auth: TenantAdmin,
 ) -> UserResponse:
+    assert_tenant_admin_access(auth, tenant_id)
     tenant = session.query(Tenant).filter(Tenant.id == tenant_id, Tenant.deleted_at.is_(None)).first()
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
@@ -81,6 +82,7 @@ def create_tenant_user(
     )
     session.add(user)
     session.flush()
+    send_reset_email(session, user, purpose="invite")
     return _user_response(user)
 
 
@@ -90,8 +92,9 @@ def update_tenant_user(
     tenant_id: str,
     user_id: str,
     body: UserUpdate,
-    auth: SuperAdmin,
+    auth: TenantAdmin,
 ) -> UserResponse:
+    assert_tenant_admin_access(auth, tenant_id)
     user = session.query(User).filter(User.id == user_id, User.tenant_id == tenant_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -116,13 +119,32 @@ def update_tenant_user(
     return _user_response(user)
 
 
+@router.post("/{tenant_id}/users/{user_id}/invite", status_code=204)
+def invite_tenant_user(
+    session: DbSession,
+    tenant_id: str,
+    user_id: str,
+    auth: TenantAdmin,
+) -> None:
+    """Resend invite email with a set-password link."""
+    assert_tenant_admin_access(auth, tenant_id)
+    user = session.query(User).filter(User.id == user_id, User.tenant_id == tenant_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not user.active:
+        raise HTTPException(status_code=400, detail="Cannot invite inactive user")
+    send_reset_email(session, user, purpose="invite")
+    session.flush()
+
+
 @router.delete("/{tenant_id}/users/{user_id}", status_code=204)
 def deactivate_tenant_user(
     session: DbSession,
     tenant_id: str,
     user_id: str,
-    auth: SuperAdmin,
+    auth: TenantAdmin,
 ) -> None:
+    assert_tenant_admin_access(auth, tenant_id)
     user = session.query(User).filter(User.id == user_id, User.tenant_id == tenant_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")

@@ -4,7 +4,7 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException, Query as Q
 from sqlalchemy import func
 
-from src.api.deps import AuthUser, SuperAdmin
+from src.api.deps import AuthUser, ScanOperator, SuperAdmin
 from src.api.deps import DbSession, assert_tenant_access, resolve_list_tenant_filter
 from src.api.schemas import (
     ExecutionCreate,
@@ -100,7 +100,7 @@ def _check_daily_limit(session: DbSession, tenant: Tenant, additional_jobs: int)
 
 
 @router.post("", response_model=ExecutionResponse)
-def create_execution(session: DbSession, body: ExecutionCreate, auth: AuthUser) -> ExecutionResponse:
+def create_execution(session: DbSession, body: ExecutionCreate, auth: ScanOperator) -> ExecutionResponse:
     assert_tenant_access(auth, body.tenant_id)
     _check_tenant_limits(session, body.tenant_id)
     _get_account_for_tenant(session, body.tenant_id, body.account_id)
@@ -132,7 +132,7 @@ def create_execution(session: DbSession, body: ExecutionCreate, auth: AuthUser) 
 
 
 @router.post("/bulk", response_model=ExecutionBulkResponse)
-def create_executions_bulk(session: DbSession, body: ExecutionBulkCreate, auth: AuthUser) -> ExecutionBulkResponse:
+def create_executions_bulk(session: DbSession, body: ExecutionBulkCreate, auth: ScanOperator) -> ExecutionBulkResponse:
     assert_tenant_access(auth, body.tenant_id)
     """Create one execution job per query for the same account. All jobs share one batch."""
     if not body.query_ids:
@@ -184,7 +184,7 @@ def create_executions_bulk(session: DbSession, body: ExecutionBulkCreate, auth: 
 
 
 @router.post("/scan", response_model=ExecutionScanResponse)
-def create_execution_scan(session: DbSession, body: ExecutionScanCreate, auth: AuthUser) -> ExecutionScanResponse:
+def create_execution_scan(session: DbSession, body: ExecutionScanCreate, auth: ScanOperator) -> ExecutionScanResponse:
     assert_tenant_access(auth, body.tenant_id)
     """
     Run all catalog queries matching category/framework for one cloud account.

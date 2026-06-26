@@ -104,3 +104,65 @@ def resolve_list_tenant_filter(auth: TokenPayload, tenant_id: str | None) -> str
     if is_super_admin(auth):
         return tenant_id
     return auth.tenant_id
+
+
+# ---- Tenant RBAC (client roles) ----
+OPERATOR_ROLES = frozenset(
+    {
+        UserRole.tenant_admin.value,
+        UserRole.tenant_user.value,
+        UserRole.super_admin.value,
+    }
+)
+TENANT_ADMIN_ROLES = frozenset({UserRole.tenant_admin.value, UserRole.super_admin.value})
+CLIENT_ROLES = frozenset(
+    {
+        UserRole.tenant_admin.value,
+        UserRole.tenant_user.value,
+        UserRole.viewer.value,
+    }
+)
+
+
+def is_viewer(auth: TokenPayload) -> bool:
+    return auth.role == UserRole.viewer.value
+
+
+def can_run_scans(auth: TokenPayload) -> bool:
+    return auth.role in OPERATOR_ROLES
+
+
+def can_manage_tenant(auth: TokenPayload) -> bool:
+    return auth.role in TENANT_ADMIN_ROLES
+
+
+def require_not_viewer(auth: AuthUser) -> TokenPayload:
+    if is_viewer(auth):
+        raise HTTPException(status_code=403, detail="viewer role is read-only")
+    return auth
+
+
+def require_scan_operator(auth: AuthUser) -> TokenPayload:
+    if not can_run_scans(auth):
+        raise HTTPException(
+            status_code=403,
+            detail="Scan operations require tenant_admin or tenant_user role",
+        )
+    return auth
+
+
+def require_tenant_admin(auth: AuthUser) -> TokenPayload:
+    if not can_manage_tenant(auth):
+        raise HTTPException(status_code=403, detail="tenant_admin role required")
+    return auth
+
+
+def assert_tenant_admin_access(auth: TokenPayload, tenant_id: str) -> None:
+    assert_tenant_access(auth, tenant_id)
+    if not is_super_admin(auth) and auth.role != UserRole.tenant_admin.value:
+        raise HTTPException(status_code=403, detail="tenant_admin role required for this tenant")
+
+
+NotViewer = Annotated[TokenPayload, Depends(require_not_viewer)]
+ScanOperator = Annotated[TokenPayload, Depends(require_scan_operator)]
+TenantAdmin = Annotated[TokenPayload, Depends(require_tenant_admin)]
