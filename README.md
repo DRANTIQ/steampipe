@@ -49,20 +49,37 @@ Multi-tenant platform for running **Steampipe** SQL and benchmark queries across
 
 ## Docs
 
-- **LOCAL_DEVELOPMENT.md** – Migrations, dummy data, local run
-- **Testing.md** – Running services and pytest
-- **user_input.md** – Canonical `.env` values (Postgres, Redis, S3)
+**Canonical documentation:** [infra-state-docs](../infra-state-docs/README.md) (sibling repo).
+
+| Topic | Location |
+|-------|----------|
+| Task tracker | `infra-state-docs/platform/TASK_TRACKER.md` |
+| Stage 1 full guide | `infra-state-docs/steampipe/STAGE1_FULL_GUIDE.md` |
+| CIS scan | `infra-state-docs/steampipe/CIS_SCAN_RUNBOOK.md` |
+| Remote DB | `infra-state-docs/steampipe/RUN_WITH_REMOTE_DB.md` |
+| Compliance platform | `infra-state-docs/platform/COMPLIANCE_PLATFORM.md` |
+| Local dev | `LOCAL_DEVELOPMENT.md` (this repo) |
+
+Stage 2 compliance runs from **cloud-compliance-engine** repo (`docker compose up` on port 8001).
 
 ## Docker (Linux; recommended to avoid macOS cert/keychain issues)
 
-All three processes (API, worker, scheduler) run in containers with `.env` loaded via `env_file`. Postgres and Redis must be reachable (e.g. from `.env`).
+**Local Postgres + Redis (all-in-one):**
 
 ```bash
-# Create .env from env.example / user_input.md (DATABASE_URL, REDIS_URL, S3 or USE_LOCAL_STORAGE, etc.)
 docker compose build
 docker compose up
 # API: http://localhost:8000
 ```
+
+**Remote Postgres + Redis (Supabase, Upstash from `.env`) — no local DB containers:**
+
+```bash
+docker compose -f docker-compose.remote.yml build
+docker compose -f docker-compose.remote.yml up
+```
+
+See **docs/RUN_WITH_REMOTE_DB.md** for init migrations and `.env` setup.
 
 - **api** – uvicorn on port 8000  
 - **worker** – runs Steampipe (uses `/app/steampipe/worker_install` with AWS plugin; no macOS keychain). For AWS queries the worker needs **master account** credentials in `.env`: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optionally `AWS_SESSION_TOKEN` (for temporary creds). With assume-role, the worker uses these to assume the child role per job. Or use an IAM role when the worker runs on AWS.  

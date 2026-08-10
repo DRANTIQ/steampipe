@@ -7,7 +7,7 @@
 Use in `.env` as `REDIS_URL`:
 
 ```
-REDIS_URL=redis://default:lZStScEstEITjaITMJKhTzRFxNOqSOBE@shuttle.proxy.rlwy.net:47076
+REDIS_URL=
 ```
 
 ## Postgres DB
@@ -15,7 +15,7 @@ REDIS_URL=redis://default:lZStScEstEITjaITMJKhTzRFxNOqSOBE@shuttle.proxy.rlwy.ne
 Use in `.env` as `DATABASE_URL`:
 
 ```
-DATABASE_URL=postgresql://postgres:NekKloaoNNkTfkAdkjfLBthiadntSysX@shinkansen.proxy.rlwy.net:26194/railway
+DATABASE_URL=
 ```
 
 ## Snapshots (S3)

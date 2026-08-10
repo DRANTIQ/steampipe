@@ -46,6 +46,14 @@ def run_scheduled_jobs() -> None:
         queue = QueueService()
         for s in schedules:
             scheduled_at = s.next_run_at
+            if getattr(s, "schedule_kind", "query") == "framework_scan":
+                from src.services.scheduled_scan import run_framework_scan_schedule
+
+                run_framework_scan_schedule(session, s, scheduled_at, queue)
+                s.last_run_at = scheduled_at
+                s.next_run_at = compute_next_run(s.cron_expression, s.timezone)
+                continue
+
             # Idempotency: skip if batch already exists for this schedule and scheduled time
             existing = (
                 session.query(ExecutionBatch)

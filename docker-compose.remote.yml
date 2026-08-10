@@ -1,0 +1,50 @@
+# API + worker + scheduler only — uses DATABASE_URL and REDIS_URL from .env
+# (Supabase, Upstash, etc.). No local Postgres or Redis containers.
+#
+# Build:  docker compose -f docker-compose.remote.yml build
+# Up:     docker compose -f docker-compose.remote.yml up
+# Init:   docker compose -f docker-compose.remote.yml run --rm api alembic upgrade head
+#
+# Requires .env with remote DATABASE_URL, REDIS_URL, AWS creds for S3 snapshots:
+#   USE_LOCAL_STORAGE=false
+#   S3_BUCKET=steampipe-data-storage
+#   S3_REGION=us-east-1
+#   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY [/ AWS_SESSION_TOKEN]
+#
+# Local snapshots (dev only): USE_LOCAL_STORAGE=true, LOCAL_STORAGE_PATH=./local/snapshots
+#
+# No platform: pin — Docker uses the host CPU (amd64 on Intel Windows, arm64 on Apple Silicon).
+# Forcing linux/arm64 on amd64 hosts breaks Steampipe/AWS plugin binaries under emulation.
+# After changing arch: docker compose -f docker-compose.remote.yml build --no-cache worker
+
+services:
+  api:
+    build: .
+    env_file: .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./local/snapshots:/app/local/snapshots
+    command: ["uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "8000"]
+    restart: unless-stopped
+
+  worker:
+    build: .
+    env_file: .env
+    environment:
+      STEAMPIPE_CONFIG_DIR: /app/steampipe
+      STEAMPIPE_PATH: /usr/local/bin/steampipe
+      HOME: /app
+      AWS_EC2_METADATA_DISABLED: "true"
+    volumes:
+      - ./local/snapshots:/app/local/snapshots
+    command: ["python", "-c", "from src.workers.execution_worker import run_worker_loop; run_worker_loop()"]
+    restart: unless-stopped
+
+  scheduler:
+    build: .
+    env_file: .env
+    command: ["python", "-c", "from src.scheduler.cron_scheduler import run_scheduler; run_scheduler()"]
+    restart: unless-stopped
+
+# Compliance (Stage 2) runs from the cloud-compliance-engine repo — see infra-state-docs/platform/SPLIT_COMPLIANCE_REPO.md

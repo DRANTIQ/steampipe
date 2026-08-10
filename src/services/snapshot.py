@@ -2,11 +2,24 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from src.config import get_settings
+
+
+def _slugify_path_segment(value: str, fallback: str = "unknown", max_len: int = 64) -> str:
+    """Filesystem- and S3-safe path segment from a human-readable label."""
+    if not value or not str(value).strip():
+        return fallback
+    s = str(value).strip().lower()
+    s = re.sub(r"[^a-z0-9._-]+", "-", s)
+    s = re.sub(r"-+", "-", s).strip("-")
+    if not s:
+        return fallback
+    return s[:max_len]
 
 
 class SnapshotService:
@@ -50,16 +63,35 @@ class SnapshotService:
         account_identifier: str,
         region: str | None,
         data: dict[str, Any],
+        tenant_name: str | None = None,
+        batch_id: str | None = None,
     ) -> str:
         """Write snapshot; return path/key for storage in ExecutionResult.snapshot_path.
-        Path includes tenant, provider, account_id, date partition, and execution_id for listing and debugging.
+
+        Path layout (human-readable):
+          {tenant_slug}/{provider}/{cloud_account_number}/{year}/{month}/{day}/[{batch_id}/]{execution_id}/result.json
+
+        When batch_id is set (CIS scan), all job snapshots for that run live under one folder.
+        tenant_name and account_identifier are slugified for safe paths. Internal UUIDs are fallbacks only.
         """
         now = datetime.utcnow()
-        key = (
-            f"tenant_id={tenant_id}/provider={provider}/account_id={account_id}/"
-            f"year={now.year}/month={now.month:02d}/day={now.day:02d}/"
-            f"execution_id={execution_id}/result.json"
+        tenant_segment = _slugify_path_segment(
+            tenant_name or "",
+            fallback=_slugify_path_segment(tenant_id, fallback="tenant"),
         )
+        provider_segment = _slugify_path_segment(provider, fallback="unknown")
+        account_segment = _slugify_path_segment(
+            account_identifier or account_id,
+            fallback=_slugify_path_segment(account_id, fallback="account"),
+        )
+        date_prefix = (
+            f"{tenant_segment}/{provider_segment}/{account_segment}/"
+            f"{now.year}/{now.month:02d}/{now.day:02d}/"
+        )
+        if batch_id:
+            key = f"{date_prefix}{batch_id}/{execution_id}/result.json"
+        else:
+            key = f"{date_prefix}{execution_id}/result.json"
         body = json.dumps(data, default=str).encode("utf-8")
 
         if self._use_local:

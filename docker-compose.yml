@@ -1,15 +1,20 @@
 # Run API, worker, scheduler, Postgres, and Redis. Build: docker compose build
 # Up: docker compose up (or docker compose up -d).
-# When running in Docker, .env must use hostnames: postgres, redis (not localhost).
+#
+# Remote Postgres + Redis (Supabase, Upstash): use docker-compose.remote.yml instead:
+#   docker compose -f docker-compose.remote.yml up
+#
+# When running in Docker with LOCAL postgres/redis below, .env hostnames must be postgres, redis (not localhost).
 #
 # Worker AWS errors: "StatusCode: 0, request send failed" / "GetCallerIdentity exceeded maximum number of attempts"
 # means the container cannot reach AWS (STS/APIs). Ensure:
 #   - Worker has outbound HTTPS (e.g. docker compose run --rm worker curl -sI https://sts.amazonaws.com)
 #   - If behind a proxy: set HTTP_PROXY / HTTPS_PROXY (and NO_PROXY if needed) under worker.environment
+#
+# No platform: pin — use host native arch (see docker-compose.remote.yml). Rebuild worker after arch changes.
 services:
   postgres:
     image: postgres:15-alpine
-    platform: linux/arm64
     environment:
       POSTGRES_USER: steampipe
       POSTGRES_PASSWORD: steampipe
@@ -26,7 +31,6 @@ services:
 
   redis:
     image: redis:7-alpine
-    platform: linux/arm64
     ports:
       - "6379:6379"
     volumes:
@@ -39,7 +43,6 @@ services:
 
   api:
     build: .
-    platform: linux/arm64
     env_file: .env
     environment:
       DATABASE_URL: postgresql://steampipe:steampipe@postgres:5432/steampipe
@@ -54,7 +57,6 @@ services:
 
   worker:
     build: .
-    platform: linux/arm64
     env_file: .env
     environment:
       DATABASE_URL: postgresql://steampipe:steampipe@postgres:5432/steampipe
@@ -62,12 +64,13 @@ services:
       STEAMPIPE_CONFIG_DIR: /app/steampipe
       STEAMPIPE_PATH: /usr/local/bin/steampipe
       HOME: /app
+      AWS_EC2_METADATA_DISABLED: "true"
       # AWS: master account creds from .env (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, optional AWS_SESSION_TOKEN) for Steampipe / assume-role.
       # If behind a corporate proxy, add:
       # HTTP_PROXY: http://proxy:port
       # HTTPS_PROXY: http://proxy:port
       # NO_PROXY: localhost,127.0.0.1
-    # No volume on worker_install/db: avoids reusing amd64 Postgres after switching to arm64. DB re-inits on container restart.
+    # No volume on worker_install/db: Steampipe DB re-inits on container restart.
     command: ["python", "-c", "from src.workers.execution_worker import run_worker_loop; run_worker_loop()"]
     restart: unless-stopped
     depends_on:
@@ -76,7 +79,6 @@ services:
 
   scheduler:
     build: .
-    platform: linux/arm64
     env_file: .env
     environment:
       DATABASE_URL: postgresql://steampipe:steampipe@postgres:5432/steampipe

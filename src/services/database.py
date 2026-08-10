@@ -3,27 +3,38 @@ from __future__ import annotations
 
 from collections.abc import Generator
 from contextlib import contextmanager
+
 from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.config import get_settings
-from src.models import Base
+from src.config.settings import postgres_connect_args
 
 
-_engine = None
+_engine: Engine | None = None
 _SessionLocal: sessionmaker[Session] | None = None
 
 
-def get_engine():
+def build_engine(**engine_kwargs) -> Engine:
+    """Create SQLAlchemy engine with optional IPv4 hostaddr for cloud Postgres from Docker."""
+    settings = get_settings()
+    connect_args = postgres_connect_args(settings.DATABASE_URL, settings.DATABASE_PREFER_IPV4)
+    kwargs = {
+        "pool_pre_ping": True,
+        "connect_args": connect_args,
+        **engine_kwargs,
+    }
+    if "poolclass" not in kwargs and "pool_size" not in kwargs:
+        kwargs["pool_size"] = 5
+        kwargs["max_overflow"] = 10
+    return create_engine(settings.DATABASE_URL, **kwargs)
+
+
+def get_engine() -> Engine:
     global _engine
     if _engine is None:
-        settings = get_settings()
-        _engine = create_engine(
-            settings.DATABASE_URL,
-            pool_pre_ping=True,
-            pool_size=5,
-            max_overflow=10,
-        )
+        _engine = build_engine()
     return _engine
 
 

@@ -2,6 +2,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query
 
+from src.api.deps import AuthUser, SuperAdmin, assert_tenant_access
 from src.api.deps import DbSession
 from src.api.schemas import CloudAccountCreate, CloudAccountResponse
 from src.models import CloudAccount, Tenant
@@ -10,7 +11,12 @@ router = APIRouter()
 
 
 @router.post("", response_model=CloudAccountResponse)
-def create_account(session: DbSession, tenant_id: str, body: CloudAccountCreate) -> CloudAccount:
+def create_account(
+    session: DbSession,
+    tenant_id: str,
+    body: CloudAccountCreate,
+    auth: SuperAdmin,
+) -> CloudAccount:
     tenant = session.query(Tenant).filter(Tenant.id == tenant_id).first()
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
@@ -45,10 +51,12 @@ def create_account(session: DbSession, tenant_id: str, body: CloudAccountCreate)
 def list_accounts(
     session: DbSession,
     tenant_id: str,
+    auth: AuthUser,
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     active: bool | None = None,
 ) -> list[CloudAccount]:
+    assert_tenant_access(auth, tenant_id)
     q = session.query(CloudAccount).filter(CloudAccount.tenant_id == tenant_id, CloudAccount.deleted_at.is_(None))
     if active is not None:
         q = q.filter(CloudAccount.active == active)

@@ -31,9 +31,10 @@ _DEBUG_SENSITIVE_KEYS = frozenset(
 
 _macos_cert_hint_logged = False
 
-from src.models import ExecutionBatch, ExecutionJob, ExecutionResult, CloudAccount, Query
+from src.models import ExecutionBatch, ExecutionJob, ExecutionResult, CloudAccount, Query, Tenant
 from src.models.enums import ExecutionJobStatus, ExecutionResultStatus
 from src.services.database import get_db_session_factory
+from src.services.job_completed_event import build_job_completed_payload
 from src.services.queue import QueueService
 from src.services.snapshot import SnapshotService
 from src.services.secrets import SecretsService
@@ -88,6 +89,41 @@ def _sanitize_for_log(obj: dict) -> dict:
         key_lower = k.lower() if isinstance(k, str) else ""
         out[k] = "***" if key_lower in _DEBUG_SENSITIVE_KEYS or "secret" in key_lower or "token" in key_lower else v
     return out
+
+
+def _apply_aws_plugin_env(env: dict[str, str]) -> None:
+    """Env vars that help the AWS plugin in Docker (no EC2 IMDS, fail fast on SDK retries)."""
+    env.setdefault("AWS_EC2_METADATA_DISABLED", "true")
+    env.setdefault("AWS_MAX_ATTEMPTS", "1")
+
+
+def _log_steampipe_connection_state(
+    steampipe_path: str,
+    env: dict[str, str],
+    connection_name: str | None,
+) -> None:
+    """Log steampipe_connection rows when a query fails (surfaces plugin init errors)."""
+    if connection_name:
+        safe_name = connection_name.replace("'", "''")
+        sql = f"select name, state, error from steampipe_connection where name = '{safe_name}'"
+    else:
+        sql = "select name, state, error from steampipe_connection"
+    try:
+        result = subprocess.run(
+            [steampipe_path, "query", "--output=json", sql],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env=env,
+        )
+        out = (result.stdout or "").strip()
+        err = (result.stderr or "").strip()
+        if out:
+            logger.error("Steampipe connection diagnostics: %s", out[:4000])
+        if err and not out:
+            logger.error("Steampipe connection diagnostics stderr: %s", err[:2000])
+    except Exception as e:
+        logger.debug("Could not query steampipe_connection: %s", e)
 
 
 def _write_aws_credentials_file(config_dir: Path) -> bool:
@@ -326,8 +362,14 @@ def _run_steampipe_query(
     *,
     connection_name: str | None = None,
     extra_env: dict[str, str] | None = None,
+    skip_service_start: bool = False,
+    keep_service_alive: bool = False,
 ) -> tuple[dict | list, int, float, str | None]:
-    """Run steampipe query; return (parsed_output, row_count, duration_seconds, error_message)."""
+    """Run steampipe query; return (parsed_output, row_count, duration_seconds, error_message).
+
+    Account session (Phase C): start once with skip_service_start=False, keep_service_alive=True;
+    subsequent queries use skip_service_start=True; last query uses keep_service_alive=False.
+    """
     start = time.perf_counter()
     cmd = [
         steampipe_path,
@@ -384,162 +426,139 @@ def _run_steampipe_query(
         effective_install = worker_install
         (worker_install / "config").mkdir(parents=True, exist_ok=True)
         (worker_install / "config" / "default.spc").write_text(f'options "database" {{\n  port = {port}\n}}\n')
-        # Copy job's connection config and AWS credential files into install dir so the service loads them
-        job_config = Path(config_dir) / "config"
-        spc_copied = [f.name for f in job_config.glob("*.spc")]
-        for f in job_config.glob("*.spc"):
-            (worker_install / "config" / f.name).write_text(f.read_text())
-        for name in ("aws_credentials", "aws_config"):
-            src = config_dir / name
-            if src.exists():
-                (worker_install / "config" / name).write_text(src.read_text())
-        creds_copied = [n for n in ("aws_credentials", "aws_config") if (config_dir / n).exists()]
-        logger.info(
-            "Steampipe config: .spc=%s creds_copied=%s worker_install=%s env_has_AWS_ACCESS_KEY_ID=%s",
-            spc_copied,
-            creds_copied,
-            worker_install,
-            "AWS_ACCESS_KEY_ID" in env,
-        )
+        if not skip_service_start:
+            # Copy job's connection config and AWS credential files into install dir so the service loads them
+            job_config = Path(config_dir) / "config"
+            spc_copied = [f.name for f in job_config.glob("*.spc")]
+            for f in job_config.glob("*.spc"):
+                (worker_install / "config" / f.name).write_text(f.read_text())
+            for name in ("aws_credentials", "aws_config"):
+                src = config_dir / name
+                if src.exists():
+                    (worker_install / "config" / name).write_text(src.read_text())
+            creds_copied = [n for n in ("aws_credentials", "aws_config") if (config_dir / n).exists()]
+            logger.info(
+                "Steampipe config: .spc=%s creds_copied=%s worker_install=%s env_has_AWS_ACCESS_KEY_ID=%s",
+                spc_copied,
+                creds_copied,
+                worker_install,
+                "AWS_ACCESS_KEY_ID" in env,
+            )
         wi_config = worker_install / "config"
-        # Same layout as reference Steampipe-in-Docker: one install dir, config and creds inside it.
         env["STEAMPIPE_INSTALL_DIR"] = str(worker_install)
         env["STEAMPIPE_CONFIG_DIR"] = str(wi_config)
         if (wi_config / "aws_credentials").exists():
             env["AWS_SHARED_CREDENTIALS_FILE"] = str(wi_config / "aws_credentials")
-            # Plugin may run as subprocess; many AWS SDKs also check ~/.aws/credentials. Set default path (e.g. HOME=/app in Docker).
             home = env.get("HOME", "/app")
             default_aws = Path(home) / ".aws"
             default_aws.mkdir(parents=True, exist_ok=True)
             default_creds = default_aws / "credentials"
             default_creds.write_text((wi_config / "aws_credentials").read_text())
-            logger.info("Also wrote credentials to default path %s (for plugin subprocess)", default_creds)
+            if not skip_service_start:
+                logger.info("Also wrote credentials to default path %s (for plugin subprocess)", default_creds)
         if (wi_config / "aws_config").exists():
             env["AWS_CONFIG_FILE"] = str(wi_config / "aws_config")
             env["AWS_SDK_LOAD_CONFIG"] = "1"
-        # Default region so plugin/SDK have one (connection .spc can override per-connection).
         if "AWS_REGION" not in env and "AWS_DEFAULT_REGION" not in env:
             env["AWS_REGION"] = settings.S3_REGION
             env["AWS_DEFAULT_REGION"] = settings.S3_REGION
-        # Inject AWS creds into env so the Steampipe service/plugin sees them (same as reference run.sh).
         if "AWS_ACCESS_KEY_ID" not in env and settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
             env["AWS_ACCESS_KEY_ID"] = settings.AWS_ACCESS_KEY_ID
             env["AWS_SECRET_ACCESS_KEY"] = settings.AWS_SECRET_ACCESS_KEY
             if settings.AWS_SESSION_TOKEN:
                 env["AWS_SESSION_TOKEN"] = settings.AWS_SESSION_TOKEN
-            logger.debug("Set master AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY in service env")
-        elif "AWS_ACCESS_KEY_ID" in env:
-            logger.debug("Using AWS creds from extra_env (e.g. assumed-role) in service env")
-        else:
-            logger.debug("No AWS creds in env; service will rely on credential files only")
-        # No retries: get real error fast instead of 9 SDK retries (AWS_MAX_ATTEMPTS=1).
-        env["AWS_MAX_ATTEMPTS"] = "1"
-        # Forward proxy env so Steampipe/plugin see same network as container (like reference Docker setup).
+        _apply_aws_plugin_env(env)
         for proxy_var in ("HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy"):
             if proxy_var in os.environ and proxy_var not in env:
                 env[proxy_var] = os.environ[proxy_var]
-        logger.debug(
-            "Env for service: STEAMPIPE_INSTALL_DIR=%s, STEAMPIPE_CONFIG_DIR=%s, AWS_SHARED_CREDENTIALS_FILE=%s, AWS_PROFILE=%s, AWS_REGION=%s",
-            env.get("STEAMPIPE_INSTALL_DIR"),
-            env.get("STEAMPIPE_CONFIG_DIR"),
-            env.get("AWS_SHARED_CREDENTIALS_FILE"),
-            env.get("AWS_PROFILE"),
-            env.get("AWS_REGION"),
-        )
-        # Use same filesystem as install dir for temp files (avoids "invalid cross-device link" in Docker)
         tmp_dir = worker_install / "tmp"
         tmp_dir.mkdir(parents=True, exist_ok=True)
         env["TMPDIR"] = str(tmp_dir)
         root_crt = _find_steampipe_root_crt(str(worker_install)) or _ensure_worker_install_has_cert(
             worker_install, steampipe_path, port
         )
-        # Query client needs SSL_CERT_FILE to trust the local Steampipe service. Do NOT pass it to the
-        # service process: the AWS plugin would then use it for outbound HTTPS to AWS and fail with
-        # "x509: certificate signed by unknown authority". Service/plugin must use system CA bundle for AWS.
         env_service = env.copy()
         if root_crt:
             env["SSL_CERT_FILE"] = root_crt
             env["SSL_CERT_DIR"] = str(Path(root_crt).parent)
             env_service.pop("SSL_CERT_FILE", None)
             env_service.pop("SSL_CERT_DIR", None)
-        # Stop any existing service
-        logger.debug("Stopping any existing Steampipe service (install=%s)", worker_install)
-        try:
-            stop_out = subprocess.run(
-                [steampipe_path, "service", "stop"],
-                capture_output=True,
-                text=True,
-                timeout=15,
-                env={**env_service, "STEAMPIPE_INSTALL_DIR": str(worker_install)},
-            )
-            if stop_out.returncode != 0 and (stop_out.stderr or stop_out.stdout):
-                logger.debug("Service stop output: stderr=%s stdout=%s", stop_out.stderr, stop_out.stdout)
-        except (subprocess.TimeoutExpired, FileNotFoundError) as e:
-            logger.debug("Service stop exception: %s", e)
-        # Start the service in foreground so it inherits our env (background daemon may not).
-        logger.info("Starting Steampipe service in foreground (port=%s) so env is inherited", port)
-        service_proc = None
-        try:
-            stderr_file = worker_install / "tmp" / "service_stderr.txt"
-            stderr_file.parent.mkdir(parents=True, exist_ok=True)
-            service_stderr_path = str(stderr_file)
-            service_stderr_file = open(service_stderr_path, "w")  # noqa: SIM115
-            service_proc = subprocess.Popen(
-                [steampipe_path, "service", "start", "--foreground"],
-                stdout=subprocess.DEVNULL,
-                stderr=service_stderr_file,
-                env=env_service,
-                text=True,
-            )
-        except FileNotFoundError:
-            logger.warning("Steampipe binary not found, falling back to service start (background)")
-            service_proc = None
+        if not skip_service_start:
+            logger.debug("Stopping any existing Steampipe service (install=%s)", worker_install)
             try:
-                subprocess.run(
-                    [steampipe_path, "service", "start"],
+                stop_out = subprocess.run(
+                    [steampipe_path, "service", "stop"],
                     capture_output=True,
                     text=True,
-                    timeout=30,
-                    env=env_service,
+                    timeout=15,
+                    env={**env_service, "STEAMPIPE_INSTALL_DIR": str(worker_install)},
                 )
-            except (subprocess.TimeoutExpired, FileNotFoundError):
-                pass
-        # Wait for service to be listening
-        for _ in range(15):
+                if stop_out.returncode != 0 and (stop_out.stderr or stop_out.stdout):
+                    logger.debug("Service stop output: stderr=%s stdout=%s", stop_out.stderr, stop_out.stdout)
+            except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+                logger.debug("Service stop exception: %s", e)
+            logger.info("Starting Steampipe service in foreground (port=%s) so env is inherited", port)
             try:
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.settimeout(2)
-                s.connect(("127.0.0.1", port))
-                s.close()
-                break
-            except OSError:
-                time.sleep(2)
-        else:
-            if service_proc and service_proc.poll() is None:
-                service_proc.terminate()
+                stderr_file = worker_install / "tmp" / "service_stderr.txt"
+                stderr_file.parent.mkdir(parents=True, exist_ok=True)
+                service_stderr_path = str(stderr_file)
+                service_stderr_file = open(service_stderr_path, "w")  # noqa: SIM115
+                service_proc = subprocess.Popen(
+                    [steampipe_path, "service", "start", "--foreground"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=service_stderr_file,
+                    env=env_service,
+                    text=True,
+                )
+            except FileNotFoundError:
+                logger.warning("Steampipe binary not found, falling back to service start (background)")
+                service_proc = None
                 try:
-                    service_proc.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    service_proc.kill()
-            logger.debug("Steampipe service did not accept TCP connection on port %s within timeout", port)
-            return {}, 0, time.perf_counter() - start, "Steampipe service did not start in time"
+                    subprocess.run(
+                        [steampipe_path, "service", "start"],
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                        env=env_service,
+                    )
+                except (subprocess.TimeoutExpired, FileNotFoundError):
+                    pass
+            for _ in range(15):
+                try:
+                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    s.settimeout(2)
+                    s.connect(("127.0.0.1", port))
+                    s.close()
+                    break
+                except OSError:
+                    time.sleep(2)
+            else:
+                if service_proc and service_proc.poll() is None:
+                    service_proc.terminate()
+                    try:
+                        service_proc.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        service_proc.kill()
+                logger.debug("Steampipe service did not accept TCP connection on port %s within timeout", port)
+                return {}, 0, time.perf_counter() - start, "Steampipe service did not start in time"
 
-        # Give the plugin time to initialize the connection (schema creation, credentials, GetCallerIdentity).
-        # AWS plugin can retry many times; 10s is often too short. Configurable via STEAMPIPE_CONNECTION_INIT_WAIT_SECONDS.
-        wait_sec = getattr(settings, "STEAMPIPE_CONNECTION_INIT_WAIT_SECONDS", 45)
-        logger.info("Service listening; waiting %ss for connection init then running query", wait_sec)
-        time.sleep(wait_sec)
-        # Flush and log service stderr so we see plugin init output / errors before running the query
-        if service_stderr_path:
-            try:
-                service_stderr_file.flush()
-                with open(service_stderr_path, "r") as f:
-                    init_err = f.read().strip()
-                if init_err:
-                    logger.info("Steampipe service stderr after init wait: %s", init_err[-3000:] if len(init_err) > 3000 else init_err)
-            except Exception as e:
-                logger.debug("Could not read service stderr after wait: %s", e)
-        logger.debug("Running steampipe query: cwd=%s cmd_prefix=%s", config_dir, cmd[:4])
+            wait_sec = getattr(settings, "STEAMPIPE_CONNECTION_INIT_WAIT_SECONDS", 45)
+            logger.info("Service listening; waiting %ss for connection init then running query", wait_sec)
+            time.sleep(wait_sec)
+            if service_stderr_path:
+                try:
+                    service_stderr_file.flush()
+                    with open(service_stderr_path, "r") as f:
+                        init_err = f.read().strip()
+                    if init_err:
+                        logger.info(
+                            "Steampipe service stderr after init wait: %s",
+                            init_err[-3000:] if len(init_err) > 3000 else init_err,
+                        )
+                except Exception as e:
+                    logger.debug("Could not read service stderr after wait: %s", e)
+        else:
+            logger.debug("Reusing warm Steampipe service for next query in account session")
 
     if "STEAMPIPE_CONFIG_DIR" not in env:
         env["STEAMPIPE_CONFIG_DIR"] = str(Path(config_dir) / "config")
@@ -583,6 +602,7 @@ def _run_steampipe_query(
                             combined = f"{combined}\n\n--- service stderr ---\n{service_err}"
                 except Exception:
                     pass
+            _log_steampipe_connection_state(steampipe_path, env, connection_name)
             err_lower = combined.lower()
             if "request send failed" in err_lower or ("getcalleridentity" in err_lower and "statuscode: 0" in err_lower):
                 hint = (
@@ -621,7 +641,7 @@ def _run_steampipe_query(
                 default_spc_path.write_text(saved_default_spc)
             except OSError:
                 pass
-        elif sys.platform != "darwin":
+        elif sys.platform != "darwin" and not keep_service_alive:
             if service_proc is not None and service_proc.poll() is None:
                 try:
                     service_proc.terminate()
@@ -690,10 +710,8 @@ def _update_batch_on_job_finish(session: Session, batch_id: str, success: bool) 
         batch.finished_at = datetime.now(timezone.utc)
 
 
-def process_job(session: Session, job_id: str, payload: dict) -> None:
-    """Process a single execution job: run Steampipe, persist snapshot, create result."""
-    settings = get_settings()
-    # Atomic claim: only proceed if job is still queued/retrying
+def _try_claim_job(session: Session, job_id: str) -> ExecutionJob | None:
+    """Atomically claim a queued/retrying job. Returns job or None if already claimed."""
     stmt = (
         update(ExecutionJob)
         .where(ExecutionJob.id == job_id)
@@ -706,16 +724,102 @@ def process_job(session: Session, job_id: str, payload: dict) -> None:
     result = session.execute(stmt)
     session.commit()
     if result.rowcount == 0:
-        logger.info("Job %s already claimed or not queued, skipping", job_id)
+        return None
+    return session.query(ExecutionJob).filter(ExecutionJob.id == job_id).first()
+
+
+def _process_batch_account_session(session: Session, job_id: str, payload: dict) -> bool:
+    """Legacy per-job queue messages with batch_id → route to account session handler."""
+    settings = get_settings()
+    if not settings.STEAMPIPE_ACCOUNT_SESSION_ENABLED:
+        return False
+
+    batch_id = payload.get("batch_id")
+    account_id = payload.get("account_id")
+    tenant_id = payload.get("tenant_id")
+    if batch_id and account_id and tenant_id:
+        from src.workers.account_session import run_account_session_for_batch
+
+        run_account_session_for_batch(
+            session,
+            batch_id=batch_id,
+            account_id=account_id,
+            tenant_id=tenant_id,
+        )
+        return True
+
+    job_peek = session.query(ExecutionJob).filter(ExecutionJob.id == job_id).first()
+    if not job_peek or not job_peek.batch_id:
+        return False
+
+    from src.workers.account_session import run_account_session_for_batch
+
+    run_account_session_for_batch(
+        session,
+        batch_id=job_peek.batch_id,
+        account_id=job_peek.account_id,
+        tenant_id=job_peek.tenant_id,
+    )
+    return True
+
+
+def process_queue_payload(session: Session, payload: dict) -> None:
+    """Dispatch Redis payload to account session or single-job handler."""
+    from src.services.queue import ACCOUNT_SESSION_MODE
+    from src.workers.account_session import run_account_session_for_batch
+
+    if payload.get("mode") == ACCOUNT_SESSION_MODE:
+        batch_id = payload.get("batch_id")
+        account_id = payload.get("account_id")
+        tenant_id = payload.get("tenant_id")
+        if not batch_id or not account_id or not tenant_id:
+            logger.warning("Account session payload missing fields: %s", payload)
+            return
+        run_account_session_for_batch(
+            session,
+            batch_id=batch_id,
+            account_id=account_id,
+            tenant_id=tenant_id,
+        )
         return
-    job = session.query(ExecutionJob).filter(ExecutionJob.id == job_id).first()
+
+    job_id = payload.get("job_id")
+    if not job_id:
+        logger.warning("Popped payload missing job_id and mode: %s", payload)
+        return
+    process_job(session, job_id, payload)
+
+
+def process_job(session: Session, job_id: str, payload: dict) -> None:
+    """Process a single execution job: run Steampipe, persist snapshot, create result."""
+    if _process_batch_account_session(session, job_id, payload):
+        return
+
+    settings = get_settings()
+    job_peek = session.query(ExecutionJob).filter(ExecutionJob.id == job_id).first()
+    if (
+        job_peek
+        and job_peek.batch_id
+        and settings.STEAMPIPE_ACCOUNT_SESSION_ENABLED
+        and job_peek.status in (ExecutionJobStatus.queued.value, ExecutionJobStatus.retrying.value)
+    ):
+        QueueService().push_account_session(
+            batch_id=job_peek.batch_id,
+            account_id=job_peek.account_id,
+            tenant_id=job_peek.tenant_id,
+        )
+        logger.debug("Batch job %s requeued as account session message", job_id)
+        return
+
+    job = _try_claim_job(session, job_id)
     if not job:
-        logger.warning("Job %s not found after claim, skipping", job_id)
+        logger.info("Job %s already claimed or not queued, skipping", job_id)
         return
     logger.info("Processing job %s (tenant=%s, query=%s)", job_id, job.tenant_id, job.query_id)
 
     account = session.query(CloudAccount).filter(CloudAccount.id == job.account_id).first()
     query = session.query(Query).filter(Query.id == job.query_id).first()
+    tenant = session.query(Tenant).filter(Tenant.id == job.tenant_id).first()
     if not account or not query:
         logger.warning("Job %s: account or query not found, marking failed", job_id)
         job.status = ExecutionJobStatus.failed.value
@@ -853,15 +957,32 @@ def process_job(session: Session, job_id: str, payload: dict) -> None:
             snapshot_path = None
         else:
             result_status = ExecutionResultStatus.success.value
+            raw_output = output if isinstance(output, dict) else {"rows": output}
+            from src.services.snapshot_document import build_snapshot_document
+
+            meta = query.extra_metadata if isinstance(query.extra_metadata, dict) else {}
+            snapshot_payload = build_snapshot_document(
+                steampipe_output=raw_output,
+                execution_job_id=job_id,
+                query_id=job.query_id,
+                query_name=query.name,
+                tenant_id=job.tenant_id,
+                account_id=job.account_id,
+                provider=account.provider,
+                batch_id=job.batch_id,
+                extra_metadata=meta,
+            )
             snapshot_path = snapshot_service.persist_snapshot(
                 tenant_id=job.tenant_id,
+                tenant_name=tenant.name if tenant else None,
                 execution_id=job_id,
                 query_id=job.query_id,
                 account_id=job.account_id,
                 provider=account.provider,
                 account_identifier=account.account_id,
                 region=account.region,
-                data=output if isinstance(output, dict) else {"rows": output},
+                data=snapshot_payload,
+                batch_id=job.batch_id,
             )
         job.finished_at = datetime.now(timezone.utc)
         success = not error_message
@@ -880,6 +1001,22 @@ def process_job(session: Session, job_id: str, payload: dict) -> None:
                 _update_batch_on_job_finish(session, job.batch_id, True)
             session.commit()
             logger.info("Job %s success (rows=%s, duration=%.2fs)", job_id, row_count, duration_seconds)
+            meta = query.extra_metadata if isinstance(query.extra_metadata, dict) else {}
+            try:
+                QueueService().publish_job_completed(
+                    build_job_completed_payload(
+                        job_id=job_id,
+                        snapshot_path=snapshot_path,
+                        tenant_id=job.tenant_id,
+                        account_id=job.account_id,
+                        query_id=job.query_id,
+                        batch_id=job.batch_id,
+                        extra_metadata=meta,
+                        row_count=row_count,
+                    )
+                )
+            except Exception as pub_err:
+                logger.warning("Job %s: failed to publish job_completed event: %s", job_id, pub_err)
         else:
             if job.retry_count < job.max_retries:
                 job.status = ExecutionJobStatus.queued.value
@@ -946,12 +1083,8 @@ def run_worker_loop() -> None:
         payload = queue.pop(timeout_seconds=5)
         if payload is None:
             continue
-        job_id = payload.get("job_id")
-        if not job_id:
-            logger.warning("Popped payload missing job_id: %s", payload)
-            continue
         session = factory()
         try:
-            process_job(session, job_id, payload)
+            process_queue_payload(session, payload)
         finally:
             session.close()

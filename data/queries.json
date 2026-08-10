@@ -88,7 +88,11 @@
           "name",
           "versioning_enabled"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "control_id": "2.1.1",
+        "legacy": true,
+        "natural_key": "name"
       }
     },
     {
@@ -109,7 +113,11 @@
           "name",
           "server_side_encryption_configuration"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "control_id": "2.1.2",
+        "legacy": true,
+        "natural_key": "name"
       }
     },
     {
@@ -129,7 +137,12 @@
           "name",
           "bucket_policy_is_public"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "control_ref": "s3-public-policy",
+        "control_id": "3.1.2",
+        "legacy": true,
+        "natural_key": "name"
       }
     },
     {
@@ -149,7 +162,12 @@
           "instance_id",
           "monitoring_state"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "control_ref": "ec2-detailed-monitoring",
+        "control_id": "5.1",
+        "legacy": true,
+        "natural_key": "instance_id"
       }
     },
     {
@@ -168,7 +186,13 @@
           "db_instance_identifier",
           "iam_database_authentication_enabled"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework": "CIS AWS Foundations Benchmark v6.0.0",
+        "framework_id": "cis_aws_v6",
+        "control_ref": "rds-iam-auth",
+        "control_id": "3.2.4",
+        "legacy": true,
+        "natural_key": "db_instance_identifier"
       }
     },
     {
@@ -188,7 +212,13 @@
           "access_key_id",
           "user_name",
           "status"
-        ]
+        ],
+        "framework_id": "cis_aws_v6",
+        "control_ref": "iam-inactive-keys",
+        "control_id": "2.10",
+        "pass_rule": "zero_rows",
+        "legacy": true,
+        "natural_key": "user_name"
       }
     },
     {
@@ -202,11 +232,7 @@
       "schedule_enabled": false,
       "active": true,
       "extra_metadata": {
-        "category": "compliance",
-        "required_columns": [
-          "user_name",
-          "access_key_count"
-        ]
+        "category": "inventory"
       }
     },
     {
@@ -256,7 +282,9 @@
           "account_id",
           "account_access_keys_present"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "account_id"
       }
     },
     {
@@ -264,7 +292,7 @@
       "version": "1.0",
       "provider": "aws",
       "plugin": "aws",
-      "query_text": "select account_id, account_mfa_enabled, account_password_present from aws_iam_account_summary where account_mfa_enabled = 0 and account_password_present = 1",
+      "query_text": "select account_id, account_mfa_enabled, account_password_present from aws_iam_account_summary where not account_mfa_enabled and account_password_present",
       "execution_mode": "single_account",
       "output_format": "json",
       "schedule_enabled": false,
@@ -279,7 +307,9 @@
           "account_mfa_enabled",
           "account_password_present"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "account_id"
       }
     },
     {
@@ -300,7 +330,9 @@
         "required_columns": [
           "minimum_password_length"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "minimum_password_length"
       }
     },
     {
@@ -321,7 +353,9 @@
         "required_columns": [
           "password_reuse_prevention"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "password_reuse_prevention"
       }
     },
     {
@@ -344,7 +378,9 @@
           "user_id",
           "mfa_enabled"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "name"
       }
     },
     {
@@ -352,7 +388,7 @@
       "version": "1.0",
       "provider": "aws",
       "plugin": "aws",
-      "query_text": "select access_key_id, user_name, status, create_date, last_used from aws_iam_access_key where status = 'Active' and (last_used is null or last_used < (now() - interval '45 days'))",
+      "query_text": "select access_key_id, user_name, status, create_date, access_key_last_used_date from aws_iam_access_key where status = 'Active' and (access_key_last_used_date is null or access_key_last_used_date < (now() - interval '45 days'))",
       "execution_mode": "single_account",
       "output_format": "json",
       "schedule_enabled": false,
@@ -366,9 +402,11 @@
           "access_key_id",
           "user_name",
           "status",
-          "last_used"
+          "access_key_last_used_date"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "user_name"
       }
     },
     {
@@ -390,7 +428,9 @@
           "user_name",
           "access_key_count"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "user_name"
       }
     },
     {
@@ -413,7 +453,9 @@
           "user_name",
           "create_date"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "user_name"
       }
     },
     {
@@ -435,7 +477,9 @@
           "user_name",
           "user_id"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "user_name"
       }
     },
     {
@@ -457,7 +501,9 @@
           "user_name",
           "attached_policy"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "user_name"
       }
     },
     {
@@ -478,7 +524,9 @@
         "required_columns": [
           "account_id"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "account_id"
       }
     },
     {
@@ -501,7 +549,9 @@
           "instance_state",
           "iam_instance_profile_arn"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "instance_id"
       }
     },
     {
@@ -509,7 +559,7 @@
       "version": "1.0",
       "provider": "aws",
       "plugin": "aws",
-      "query_text": "select name, certificate_id, upload_date, expiration from aws_iam_server_certificate where expiration < now()",
+      "query_text": "select name, server_certificate_id, upload_date, expiration from aws_iam_server_certificate where expiration < now()",
       "execution_mode": "single_account",
       "output_format": "json",
       "schedule_enabled": false,
@@ -521,10 +571,12 @@
         "control_ref": "iam-expired-certificates",
         "required_columns": [
           "name",
-          "certificate_id",
+          "server_certificate_id",
           "expiration"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "name"
       }
     },
     {
@@ -547,7 +599,9 @@
           "name",
           "status"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "name"
       }
     },
     {
@@ -555,7 +609,7 @@
       "version": "1.0",
       "provider": "aws",
       "plugin": "aws",
-      "query_text": "select name, region, account_id, bucket_policy from aws_s3_bucket where bucket_policy is null or bucket_policy::text not like '%aws:SecureTransport%' and bucket_policy::text not like '%false%'",
+      "query_text": "select name, region, account_id from aws_s3_bucket where name not in (select name from aws_s3_bucket, jsonb_array_elements(policy_std -> 'Statement') as s, jsonb_array_elements_text(s -> 'Principal' -> 'AWS') as p, jsonb_array_elements_text(s -> 'Action') as a, jsonb_array_elements_text(s -> 'Condition' -> 'Bool' -> 'aws:securetransport') as ssl where p = '*' and s ->> 'Effect' = 'Deny' and ssl::bool = false)",
       "execution_mode": "single_account",
       "output_format": "json",
       "schedule_enabled": false,
@@ -568,9 +622,11 @@
         "required_columns": [
           "name",
           "region",
-          "bucket_policy"
+          "account_id"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "name"
       }
     },
     {
@@ -595,7 +651,9 @@
           "ignore_public_acls",
           "restrict_public_buckets"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "name"
       }
     },
     {
@@ -617,7 +675,9 @@
           "db_instance_identifier",
           "storage_encrypted"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "db_instance_identifier"
       }
     },
     {
@@ -639,7 +699,9 @@
           "db_instance_identifier",
           "auto_minor_version_upgrade"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "db_instance_identifier"
       }
     },
     {
@@ -661,7 +723,9 @@
           "db_instance_identifier",
           "publicly_accessible"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "db_instance_identifier"
       }
     },
     {
@@ -684,7 +748,9 @@
           "name",
           "encrypted"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "name"
       }
     },
     {
@@ -707,7 +773,9 @@
           "region",
           "log_file_validation_enabled"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "name"
       }
     },
     {
@@ -715,7 +783,7 @@
       "version": "1.0",
       "provider": "aws",
       "plugin": "aws",
-      "query_text": "select name, region, recording from aws_config_configuration_recorder where recording = false",
+      "query_text": "select name, region, status_recording from aws_config_configuration_recorder where not status_recording",
       "execution_mode": "single_account",
       "output_format": "json",
       "schedule_enabled": false,
@@ -728,9 +796,11 @@
         "required_columns": [
           "name",
           "region",
-          "recording"
+          "status_recording"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "name"
       }
     },
     {
@@ -753,7 +823,9 @@
           "region",
           "kms_key_id"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "name"
       }
     },
     {
@@ -775,7 +847,9 @@
           "id",
           "region"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "region"
       }
     },
     {
@@ -797,7 +871,9 @@
           "vpc_id",
           "region"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "vpc_id"
       }
     },
     {
@@ -819,7 +895,9 @@
           "name",
           "region"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "name"
       }
     },
     {
@@ -841,7 +919,9 @@
           "name",
           "region"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "name"
       }
     },
     {
@@ -862,7 +942,9 @@
         "required_columns": [
           "region"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "region"
       }
     },
     {
@@ -884,7 +966,9 @@
           "region",
           "default_ebs_encryption_enabled"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "region"
       }
     },
     {
@@ -909,7 +993,9 @@
           "to_port",
           "cidr_ipv4"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "group_id"
       }
     },
     {
@@ -932,7 +1018,9 @@
           "region",
           "account_id"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "account_id"
       }
     },
     {
@@ -957,7 +1045,9 @@
           "to_port",
           "cidr_ipv4"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "group_id"
       }
     },
     {
@@ -982,7 +1072,9 @@
           "to_port",
           "cidr_ipv6"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "group_id"
       }
     },
     {
@@ -1005,7 +1097,9 @@
           "group_name",
           "vpc_id"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "group_id"
       }
     },
     {
@@ -1028,7 +1122,9 @@
           "instance_state",
           "metadata_options"
         ],
-        "pass_rule": "zero_rows"
+        "pass_rule": "zero_rows",
+        "framework_id": "cis_aws_v6",
+        "natural_key": "instance_id"
       }
     }
   ]

@@ -17,6 +17,12 @@ class QuerySchedule(Base, TimestampMixin):
     query_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("queries.id", ondelete="CASCADE"), nullable=True, index=True
     )
+    account_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("cloud_accounts.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    schedule_kind: Mapped[str] = mapped_column(String(32), nullable=False, default="query")
+    framework_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    category: Mapped[str | None] = mapped_column(Text, nullable=True)
     run_all: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     cron_expression: Mapped[str] = mapped_column(String(128), nullable=False)
     timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="UTC")
